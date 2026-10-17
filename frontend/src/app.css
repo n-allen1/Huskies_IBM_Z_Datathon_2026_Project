@@ -1,0 +1,283 @@
+@import 'tailwindcss';
+
+/*
+ * ResponseMatch night theme.
+ * Surfaces step up in lightness (app < panel < raised); borders are one quiet step above raised.
+ * Severity and status colors are reserved for operational meaning: do not use them for decoration.
+ * Every text color below meets WCAG AA (4.5:1) on app, panel and raised surfaces.
+ */
+@theme {
+  --color-app: #0b111b;
+  --color-panel: #131d2b;
+  --color-raised: #1b2939;
+  --color-hover: #223347;
+  --color-line: #2a3a4c;
+  --color-line-strong: #5a7189;
+
+  --color-fg: #e8eef5;
+  --color-muted: #9baec2;
+  --color-faint: #8ba0b5;
+
+  --color-accent: #4da8d8;
+  --color-accent-fg: #06121c;
+  --color-accent-soft: #14304a;
+
+  /* Incident priority: always paired with a distinct shape and a number. */
+  --color-p1: #f77b7b;
+  --color-p2: #f5a05a;
+  --color-p3: #e6cb5c;
+  --color-p4: #8fb4d6;
+
+  /* Operational status */
+  --color-ok: #4fc08d;
+  --color-warn: #e6b450;
+  --color-danger: #f77b7b;
+  --color-danger-soft: #3a1a22;
+  --color-warn-soft: #3a2f14;
+  --color-ok-soft: #12332a;
+  /* Anything produced by a model: kept visually separate from verified data and human decisions. */
+  --color-ai: #b79bf2;
+  --color-ai-soft: #2a2145;
+
+  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    font-size: 15px;
+  }
+  body {
+    @apply bg-app text-fg antialiased;
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex min-h-8 items-center justify-center gap-1.5 rounded-md whitespace-nowrap border border-line-strong bg-raised px-3 py-1 text-sm font-medium text-fg;
+    @apply hover:bg-hover disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-raised;
+  }
+  .btn-primary {
+    @apply border-accent bg-accent text-accent-fg hover:bg-[#6bb9e3] disabled:hover:bg-accent;
+  }
+  .btn-danger {
+    @apply border-danger bg-danger text-accent-fg hover:bg-[#fa9a9a] disabled:hover:bg-danger;
+  }
+  .btn-ghost {
+    @apply border-transparent bg-transparent text-muted hover:bg-raised hover:text-fg disabled:hover:bg-transparent;
+  }
+  .btn-sm {
+    @apply min-h-7 px-2 text-xs;
+  }
+  .panel {
+    @apply rounded-md border border-line bg-panel;
+  }
+  .section-title {
+    @apply text-[0.7rem] font-semibold tracking-wider text-muted uppercase;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded border border-line-strong px-1.5 py-px text-[0.7rem] font-semibold whitespace-nowrap text-muted;
+  }
+  .field {
+    @apply w-full rounded-md border border-line-strong bg-app px-2 py-1.5 text-sm text-fg placeholder:text-faint;
+    @apply focus-visible:border-accent;
+  }
+  .label {
+    @apply mb-1 block text-xs font-medium text-muted;
+  }
+  .chip {
+    @apply inline-flex min-h-7 items-center gap-1 rounded-md border border-line-strong bg-transparent px-2 text-xs font-semibold text-muted hover:bg-raised;
+  }
+  .chip[aria-pressed='true'] {
+    @apply border-accent bg-accent-soft text-fg;
+  }
+  .kbd {
+    @apply rounded border border-line-strong bg-app px-1 font-mono text-[0.65rem] text-muted;
+  }
+}
+
+/* ---------------- Map (Leaflet DOM is created outside Svelte, so these are global) ---------------- */
+.rm-map {
+  background: #0d1520; /* shown while tiles load: matches the dark basemap, never a white flash */
+}
+.rm-map .leaflet-container {
+  background: #0d1520;
+  font-family: var(--font-sans);
+}
+.rm-map .leaflet-control-attribution {
+  background: rgb(11 17 27 / 0.75);
+  color: var(--color-faint);
+  font-size: 10px;
+}
+.rm-map .leaflet-control-attribution a {
+  color: var(--color-muted);
+}
+.rm-labels-pane {
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+.rm-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.rm-icon:focus-visible {
+  outline: none;
+}
+.rm-icon:focus-visible > .rm-marker {
+  outline: 2px solid var(--color-fg);
+  outline-offset: 4px;
+  border-radius: 6px;
+}
+.rm-inc.handled {
+  opacity: 0.6;
+}
+.rm-ring {
+  position: absolute;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border: 2px solid var(--color-fg);
+  box-shadow: 0 0 0 2px var(--color-app), inset 0 0 0 2px var(--color-app);
+}
+.rm-cluster-top {
+  position: absolute;
+  top: -9px;
+  right: -9px;
+  display: flex;
+  background: var(--color-app);
+  border-radius: 999px;
+}
+.rm-inc svg {
+  position: relative;
+  display: block;
+  overflow: visible;
+}
+.rm-inc-tag {
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--color-app);
+  border: 1px solid var(--color-fg);
+  color: var(--color-fg);
+  font: 600 11px/1.4 var(--font-sans);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.rm-unit {
+  /* Sits just below its point so a unit parked at an incident does not hide the incident symbol. */
+  transform: translate(-50%, 6px);
+  gap: 4px;
+  padding: 1px 6px 1px 4px;
+  border-radius: 5px;
+  border: 1.5px solid var(--color-line-strong);
+  background: var(--color-panel);
+  color: var(--color-fg);
+  font: 600 11px/1.5 var(--font-sans);
+  white-space: nowrap;
+}
+.rm-unit .g {
+  font-size: 10px;
+}
+.rm-unit.available {
+  border-color: var(--color-ok);
+}
+.rm-unit.available .g {
+  color: var(--color-ok);
+}
+.rm-unit.assigned {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+.rm-unit.assigned .g {
+  color: var(--color-accent);
+}
+.rm-unit.returning {
+  border-style: dotted;
+  border-color: var(--color-muted);
+}
+.rm-unit.unavailable {
+  border-style: dashed;
+  border-color: var(--color-faint);
+  color: var(--color-muted);
+  background: var(--color-app);
+  text-decoration: line-through;
+  text-decoration-color: var(--color-faint);
+}
+.rm-unit.candidate {
+  box-shadow: 0 0 0 2px var(--color-app), 0 0 0 4px var(--color-accent);
+}
+.rm-facility {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: 1.5px solid var(--color-line-strong);
+  background: var(--color-app);
+  color: var(--color-muted);
+  font: 700 10px/1 var(--font-sans);
+}
+.rm-cluster {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-app);
+  border: 2px solid var(--color-muted);
+  color: var(--color-fg);
+  font: 700 12px/1 var(--font-sans);
+}
+.rm-cluster.units {
+  border-radius: 6px;
+  border-style: dashed;
+  height: 24px;
+  min-width: 24px;
+  font-size: 11px;
+}
+.rm-tip.leaflet-tooltip {
+  background: var(--color-app);
+  color: var(--color-fg);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.5);
+  padding: 6px 8px;
+  font: 12px/1.4 var(--font-sans);
+}
+.rm-tip.leaflet-tooltip::before {
+  display: none;
+}
+.rm-tip b {
+  font-weight: 650;
+}
+.rm-tip .sub {
+  color: var(--color-muted);
+}
