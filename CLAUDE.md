@@ -8,6 +8,8 @@ Follow the `commit-messages` skill (`.claude/skills/commit-messages/SKILL.md`) f
 
 This project is **contract-first**. The canonical OpenAPI contract is **`contracts/openapi.json`** (OpenAPI 3.1, "ResponseMatch API"). `contracts/swagger.html` is only a viewer. If another spec file appears, or the canonical one is unclear, stop and ask a human which is authoritative.
 
+`scripts/gen_openapi.py` generates the contract and is treated as a contract source: editing it, or re-running it to overwrite `contracts/openapi.json`, is a contract change and needs the same human approval. Never hand-edit the JSON in a way the generator would not reproduce; change the generator, then regenerate (after approval).
+
 The latest **human-approved, committed** version of that file is the source of truth. (The repo currently has no commits; until the first commit, the file as the human last handed it to you is the baseline. Recommend the human commit it as the approved baseline.) Implementation conforms to the contract, never the reverse.
 
 ### Operating rule
