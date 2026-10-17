@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>ResponseMatch API</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.min.css">
+</head><body><div id="ui"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.min.js"></script>
+<script>
+const ui=SwaggerUIBundle({url:"openapi.json",dom_id:"#ui",deepLinking:true,tryItOutEnabled:true,persistAuthorization:true});
+// Mock/demo only: Prism accepts any non-empty bearer token. Not real auth.
+ui.preauthorizeApiKey("bearerAuth","demo-token");
+</script>
+</body></html>

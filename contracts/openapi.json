@@ -1,0 +1,5846 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ResponseMatch API",
+    "version": "0.1.1",
+    "summary": "Human-in-the-loop emergency dispatch decision support (IBM Z Datathon 2026).",
+    "description": "Authoritative contract for ResponseMatch Live, Planning and Insights.\n\n**Decision support only.** The API never issues real dispatch orders; any resulting unit assignment is a simulated action. All operational data is synthetic or simulated. Not CJIS-certified, HIPAA-compliant, or production-ready.\n\nConventions: timestamps are ISO 8601 UTC; list endpoints use cursor pagination (`limit`, `cursor`) and `sort`; mutating endpoints that would be harmful if repeated require `Idempotency-Key`; entities carry `version` for optimistic concurrency; ML predictions, deterministic rules, optimizer output and human decisions are kept in separate fields/records.",
+    "license": {
+      "name": "Hackathon prototype",
+      "identifier": "UNLICENSED"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4010",
+      "description": "Prism mock server"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local development"
+    },
+    {
+      "url": "https://responsematch.example.invalid",
+      "description": "LinuxONE deployment (placeholder)"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Auth"
+    },
+    {
+      "name": "Incidents"
+    },
+    {
+      "name": "Intelligence"
+    },
+    {
+      "name": "Recommendations"
+    },
+    {
+      "name": "Resources"
+    },
+    {
+      "name": "Personnel"
+    },
+    {
+      "name": "Planning"
+    },
+    {
+      "name": "Insights"
+    },
+    {
+      "name": "Admin"
+    },
+    {
+      "name": "Events"
+    }
+  ],
+  "paths": {
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "getCurrentUser",
+        "summary": "Current user",
+        "tags": [
+          "Auth"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, hr_training_admin, fleet_equipment_admin, department_leadership, system_admin.",
+        "responses": {
+          "200": {
+            "description": "Principal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "getHealth",
+        "summary": "Service health",
+        "tags": [
+          "Auth"
+        ],
+        "description": "Unauthenticated liveness/readiness for deployment health checks.",
+        "responses": {
+          "200": {
+            "description": "Healthy or degraded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "security": [],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/incidents": {
+      "get": {
+        "operationId": "listIncidents",
+        "summary": "List incidents",
+        "tags": [
+          "Incidents"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "intake",
+                  "pending_dispatch",
+                  "recommendation_ready",
+                  "dispatched_simulated",
+                  "on_scene_simulated",
+                  "resolved",
+                  "cancelled"
+                ]
+              }
+            }
+          },
+          {
+            "name": "priority",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "P1",
+                "P2",
+                "P3",
+                "P4",
+                "unassigned"
+              ]
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/IncidentCategory"
+            }
+          },
+          {
+            "name": "createdAfter",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          },
+          {
+            "name": "createdBefore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "description": "Full-text search over narrative and address."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of incidents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      },
+      "post": {
+        "operationId": "createIncident",
+        "summary": "Create incident (synthetic)",
+        "tags": [
+          "Incidents"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdemKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/incidents/{incidentId}": {
+      "get": {
+        "operationId": "getIncident",
+        "summary": "Get incident",
+        "tags": [
+          "Incidents"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IncidentId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Incident",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      },
+      "patch": {
+        "operationId": "updateIncident",
+        "summary": "Update incident",
+        "tags": [
+          "Incidents"
+        ],
+        "description": "Status transitions are validated; invalid transitions return INVALID_STATE_TRANSITION. Priority confirmation is restricted to dispatchers and supervisors. Allowed roles: call_taker, dispatcher, supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IncidentId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncidentUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Incident"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/incidents/{incidentId}/events": {
+      "get": {
+        "operationId": "listIncidentEvents",
+        "summary": "Incident timeline",
+        "tags": [
+          "Incidents"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IncidentId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentEventList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "stretch"
+      }
+    },
+    "/api/v1/incidents/{incidentId}/classifications": {
+      "post": {
+        "operationId": "createClassification",
+        "summary": "Infer or confirm classification",
+        "tags": [
+          "Intelligence"
+        ],
+        "description": "Inferred suggestions stay `suggested` until a human confirms them. May return 503 INFERENCE_UNAVAILABLE; clients then fall back to manual entry. Allowed roles: call_taker, dispatcher, supervisor.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IncidentId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassificationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Classification recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Classification"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/incidents/{incidentId}/requirements": {
+      "get": {
+        "operationId": "getIncidentRequirements",
+        "summary": "Required capabilities",
+        "tags": [
+          "Intelligence"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IncidentId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requirements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequirementSet"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/incidents/{incidentId}/recommendations": {
+      "get": {
+        "operationId": "listIncidentRecommendations",
+        "summary": "List recommendations",
+        "tags": [
+          "Intelligence"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IncidentId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recommendations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      },
+      "post": {
+        "operationId": "createRecommendation",
+        "summary": "Generate recommendation",
+        "tags": [
+          "Intelligence"
+        ],
+        "description": "Runs hard eligibility, prioritization, and optional optimization. Mandatory eligibility is never overridden by ranking. Allowed roles: dispatcher, supervisor.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IncidentId"
+          },
+          {
+            "$ref": "#/components/parameters/IdemKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Recommendation generated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recommendation"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "x-allowed-roles": [
+          "dispatcher",
+          "supervisor"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/recommendations/{recommendationId}": {
+      "get": {
+        "operationId": "getRecommendation",
+        "summary": "Get recommendation",
+        "tags": [
+          "Recommendations"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RecommendationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recommendation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recommendation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/recommendations/{recommendationId}/reviews": {
+      "post": {
+        "operationId": "createRecommendationReview",
+        "summary": "Record human review",
+        "tags": [
+          "Recommendations"
+        ],
+        "description": "Duplicate submissions are harmful, so Idempotency-Key is required. Returns 409 UNIT_UNAVAILABLE or RECOMMENDATION_OUTDATED when inputs went stale. Allowed roles: dispatcher, supervisor.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RecommendationId"
+          },
+          {
+            "$ref": "#/components/parameters/IdemKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Review recorded (simulated assignment only)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationReview"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "x-allowed-roles": [
+          "dispatcher",
+          "supervisor"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/resources/units": {
+      "get": {
+        "operationId": "listUnits",
+        "summary": "List units",
+        "tags": [
+          "Resources"
+        ],
+        "description": "Allowed roles: dispatcher, supervisor, fleet_equipment_admin, hr_training_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "available",
+                  "dispatched_simulated",
+                  "en_route_simulated",
+                  "on_scene_simulated",
+                  "returning",
+                  "out_of_service",
+                  "off_duty"
+                ]
+              }
+            }
+          },
+          {
+            "name": "discipline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "fire",
+                "police",
+                "ems"
+              ]
+            }
+          },
+          {
+            "name": "agencyId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "stationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "capabilityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Units",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "dispatcher",
+          "supervisor",
+          "fleet_equipment_admin",
+          "hr_training_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/resources/units/{unitId}": {
+      "get": {
+        "operationId": "getUnit",
+        "summary": "Get unit",
+        "tags": [
+          "Resources"
+        ],
+        "description": "Allowed roles: dispatcher, supervisor, fleet_equipment_admin, hr_training_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UnitId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unit"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "dispatcher",
+          "supervisor",
+          "fleet_equipment_admin",
+          "hr_training_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/resources/facilities": {
+      "get": {
+        "operationId": "listFacilities",
+        "summary": "List facilities",
+        "tags": [
+          "Resources"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, hr_training_admin, fleet_equipment_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "fire_station",
+                "police_station",
+                "ems_station",
+                "hospital",
+                "eoc"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Facilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FacilityList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/resources/apparatus": {
+      "get": {
+        "operationId": "listApparatus",
+        "summary": "List apparatus and equipment",
+        "tags": [
+          "Resources"
+        ],
+        "description": "Allowed roles: dispatcher, supervisor, fleet_equipment_admin, hr_training_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "readiness",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "limited",
+                "maintenance",
+                "out_of_service"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Apparatus",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApparatusList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "dispatcher",
+          "supervisor",
+          "fleet_equipment_admin",
+          "hr_training_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/resources/capabilities": {
+      "get": {
+        "operationId": "listCapabilityDefinitions",
+        "summary": "Capability registry",
+        "tags": [
+          "Resources"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, hr_training_admin, fleet_equipment_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Definitions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CapabilityDefinitionList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/resources/units/{unitId}/capabilities": {
+      "get": {
+        "operationId": "getUnitCapabilities",
+        "summary": "Unit capability status",
+        "tags": [
+          "Resources"
+        ],
+        "description": "Allowed roles: dispatcher, supervisor, fleet_equipment_admin, hr_training_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UnitId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-capability state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitCapabilities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "dispatcher",
+          "supervisor",
+          "fleet_equipment_admin",
+          "hr_training_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/resources/units/{unitId}/status-events": {
+      "post": {
+        "operationId": "createUnitStatusEvent",
+        "summary": "Record unit status (simulated)",
+        "tags": [
+          "Resources"
+        ],
+        "description": "May invalidate pending recommendations that include this unit (emits recommendation.invalidated). Allowed roles: dispatcher, supervisor, fleet_equipment_admin, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UnitId"
+          },
+          {
+            "$ref": "#/components/parameters/IdemKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnitStatusEventCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Status recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnitStatusEvent"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "x-allowed-roles": [
+          "dispatcher",
+          "supervisor",
+          "fleet_equipment_admin",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/personnel": {
+      "get": {
+        "operationId": "listPersonnel",
+        "summary": "List personnel",
+        "tags": [
+          "Personnel"
+        ],
+        "description": "Allowed roles: supervisor, hr_training_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "agencyId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "stationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "credentialDefinitionId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personnel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonnelList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "hr_training_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "stretch"
+      }
+    },
+    "/api/v1/personnel/{personnelId}": {
+      "get": {
+        "operationId": "getPersonnel",
+        "summary": "Get personnel",
+        "tags": [
+          "Personnel"
+        ],
+        "description": "Allowed roles: supervisor, hr_training_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PersonnelId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Person",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Personnel"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "hr_training_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "stretch"
+      }
+    },
+    "/api/v1/personnel/{personnelId}/credentials": {
+      "get": {
+        "operationId": "listCredentials",
+        "summary": "List credentials",
+        "tags": [
+          "Personnel"
+        ],
+        "description": "Allowed roles: supervisor, hr_training_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PersonnelId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "hr_training_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "stretch"
+      },
+      "post": {
+        "operationId": "createCredential",
+        "summary": "Add credential",
+        "tags": [
+          "Personnel"
+        ],
+        "description": "Allowed roles: hr_training_admin, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PersonnelId"
+          },
+          {
+            "$ref": "#/components/parameters/IdemKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Credential"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "x-allowed-roles": [
+          "hr_training_admin",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/personnel/{personnelId}/credentials/{credentialId}": {
+      "patch": {
+        "operationId": "updateCredential",
+        "summary": "Update credential",
+        "tags": [
+          "Personnel"
+        ],
+        "description": "Allowed roles: hr_training_admin, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PersonnelId"
+          },
+          {
+            "$ref": "#/components/parameters/CredentialId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Credential"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        },
+        "x-allowed-roles": [
+          "hr_training_admin",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/planning/forecasts": {
+      "get": {
+        "operationId": "listForecasts",
+        "summary": "Demand forecasts",
+        "tags": [
+          "Planning"
+        ],
+        "description": "Allowed roles: supervisor, department_leadership, hr_training_admin, fleet_equipment_admin, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "serviceAreaId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "discipline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "fire",
+                "police",
+                "ems",
+                "rescue",
+                "hazmat",
+                "other"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Forecasts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ForecastList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "department_leadership",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "system_admin"
+        ],
+        "x-mvp-tier": "stretch"
+      }
+    },
+    "/api/v1/planning/coverage": {
+      "get": {
+        "operationId": "getCoverage",
+        "summary": "Coverage matrix",
+        "tags": [
+          "Planning"
+        ],
+        "description": "Allowed roles: supervisor, department_leadership, hr_training_admin, fleet_equipment_admin, system_admin.",
+        "parameters": [
+          {
+            "name": "serviceAreaId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          },
+          {
+            "name": "dataKind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "observed",
+                "predicted",
+                "scenario"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Coverage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "department_leadership",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/planning/gaps": {
+      "get": {
+        "operationId": "listCoverageGaps",
+        "summary": "Recurring coverage gaps",
+        "tags": [
+          "Planning"
+        ],
+        "description": "Allowed roles: supervisor, department_leadership, hr_training_admin, fleet_equipment_admin, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "cause",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "capabilityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Gaps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverageGapList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "department_leadership",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "system_admin"
+        ],
+        "x-mvp-tier": "stretch"
+      }
+    },
+    "/api/v1/planning/shifts": {
+      "get": {
+        "operationId": "listShifts",
+        "summary": "Shifts",
+        "tags": [
+          "Planning"
+        ],
+        "description": "Allowed roles: supervisor, department_leadership, hr_training_admin, fleet_equipment_admin, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "stationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Shifts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShiftList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "department_leadership",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/planning/scenarios": {
+      "post": {
+        "operationId": "createScenario",
+        "summary": "Create scenario",
+        "tags": [
+          "Planning"
+        ],
+        "description": "Allowed roles: supervisor, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdemKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scenario"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/planning/scenarios/{scenarioId}": {
+      "get": {
+        "operationId": "getScenario",
+        "summary": "Get scenario",
+        "tags": [
+          "Planning"
+        ],
+        "description": "Allowed roles: supervisor, department_leadership, hr_training_admin, fleet_equipment_admin, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ScenarioId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scenario",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Scenario"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "department_leadership",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/planning/scenarios/{scenarioId}/evaluations": {
+      "post": {
+        "operationId": "createScenarioEvaluation",
+        "summary": "Evaluate scenario",
+        "tags": [
+          "Planning"
+        ],
+        "description": "Allowed roles: supervisor, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ScenarioId"
+          },
+          {
+            "$ref": "#/components/parameters/IdemKey"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Evaluation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioEvaluation"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/insights/readiness": {
+      "get": {
+        "operationId": "getReadiness",
+        "summary": "Readiness summary",
+        "tags": [
+          "Insights"
+        ],
+        "description": "Allowed roles: department_leadership, supervisor, system_admin.",
+        "parameters": [
+          {
+            "name": "agencyId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Readiness",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "department_leadership",
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/insights/training-gaps": {
+      "get": {
+        "operationId": "listTrainingGaps",
+        "summary": "Training gaps",
+        "tags": [
+          "Insights"
+        ],
+        "description": "Allowed roles: department_leadership, supervisor, system_admin, hr_training_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Gaps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingGapList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "department_leadership",
+          "supervisor",
+          "system_admin",
+          "hr_training_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/insights/equipment-gaps": {
+      "get": {
+        "operationId": "listEquipmentGaps",
+        "summary": "Equipment gaps",
+        "tags": [
+          "Insights"
+        ],
+        "description": "Allowed roles: department_leadership, supervisor, system_admin, fleet_equipment_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Gaps",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentGapList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "department_leadership",
+          "supervisor",
+          "system_admin",
+          "fleet_equipment_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/insights/recommendations": {
+      "get": {
+        "operationId": "listLeadershipRecommendations",
+        "summary": "Advisory recommendations",
+        "tags": [
+          "Insights"
+        ],
+        "description": "Allowed roles: department_leadership, supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recommendations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeadershipRecommendationList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "department_leadership",
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "stretch"
+      }
+    },
+    "/api/v1/audit/events": {
+      "get": {
+        "operationId": "listAuditEvents",
+        "summary": "Audit log",
+        "tags": [
+          "Admin"
+        ],
+        "description": "Allowed roles: supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "actorId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "entityType",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "entityId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 UTC timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventList"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "stretch"
+      }
+    },
+    "/api/v1/admin/policies": {
+      "get": {
+        "operationId": "listPolicies",
+        "summary": "List policy versions",
+        "tags": [
+          "Admin"
+        ],
+        "description": "Allowed roles: supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Sort"
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active",
+                "retired"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Policies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/admin/policies/{policyId}": {
+      "get": {
+        "operationId": "getPolicy",
+        "summary": "Get policy",
+        "tags": [
+          "Admin"
+        ],
+        "description": "Allowed roles: supervisor, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PolicyId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Policy"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "x-allowed-roles": [
+          "supervisor",
+          "system_admin"
+        ],
+        "x-mvp-tier": "future"
+      }
+    },
+    "/api/v1/events/stream": {
+      "get": {
+        "operationId": "streamEvents",
+        "summary": "Server-Sent Events stream",
+        "tags": [
+          "Events"
+        ],
+        "description": "Allowed roles: call_taker, dispatcher, supervisor, hr_training_admin, fleet_equipment_admin, department_leadership, system_admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LastEventId"
+          },
+          {
+            "name": "types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "incident.created",
+                  "incident.updated",
+                  "unit.status_changed",
+                  "recommendation.created",
+                  "recommendation.invalidated",
+                  "coverage.gap_detected",
+                  "stream.resync_required",
+                  "stream.heartbeat"
+                ]
+              }
+            },
+            "description": "Subscribe only to these event types."
+          },
+          {
+            "name": "lastEventId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Fallback for clients that cannot set headers (e.g. native EventSource polyfills)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "text/event-stream. Each frame: `id: <EventEnvelope.id>`, `event: <type>`, `data: <EventEnvelope JSON>`. A `stream.heartbeat` is sent every 15 s. On reconnect with Last-Event-ID the server replays missed events (retention window configurable); if the id is too old it emits `stream.resync_required` and the client must refetch affected lists.",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "const": "no-cache"
+                }
+              }
+            },
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "SSE frames whose data field is an EventEnvelope."
+                },
+                "x-frame-data-schema": {
+                  "$ref": "#/components/schemas/EventEnvelope"
+                },
+                "example": "id: 000000000123\nevent: incident.created\ndata: {\"id\":\"000000000123\",\"type\":\"incident.created\",\"timestamp\":\"2026-03-01T14:02:11Z\",\"entity\":{\"type\":\"incident\",\"id\":\"3f0c1a52-8d4e-4e0b-9a55-1d2f3c4b5a60\"},\"version\":1,\"schemaVersion\":\"1\",\"payload\":{\"number\":\"INC-2026-000142\",\"priority\":\"unassigned\"}}\n\n"
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "department_leadership",
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    },
+    "/api/v1/admin/demo/reset": {
+      "post": {
+        "operationId": "resetDemoData",
+        "summary": "Reset and re-seed demo data",
+        "tags": [
+          "Admin"
+        ],
+        "description": "Demo/hackathon only. Disabled unless DEMO_MODE=true. Restores the deterministic synthetic seed. Allowed roles: system_admin.",
+        "responses": {
+          "200": {
+            "description": "Data re-seeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DemoResetResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          }
+        },
+        "x-allowed-roles": [
+          "system_admin"
+        ],
+        "x-mvp-tier": "mvp"
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Replaceable auth adapter. The hackathon demo adapter issues tokens for fictional users and is not production authentication."
+      }
+    },
+    "schemas": {
+      "Provenance": {
+        "type": "object",
+        "properties": {
+          "dataOrigin": {
+            "type": "string",
+            "enum": [
+              "synthetic",
+              "public_historical",
+              "simulated",
+              "user_entered",
+              "model_generated"
+            ]
+          },
+          "sourceSystem": {
+            "type": "string",
+            "examples": [
+              "responsematch-seed-v1"
+            ]
+          },
+          "sourceTimestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "retrievedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "verificationStatus": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "unverified",
+              "unknown"
+            ]
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "staleAfterSeconds": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "dataOrigin",
+          "sourceTimestamp"
+        ],
+        "description": "Source provenance and freshness. All hackathon data is synthetic or simulated."
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "VALIDATION_ERROR",
+              "NOT_FOUND",
+              "UNAUTHENTICATED",
+              "FORBIDDEN",
+              "STALE_DATA",
+              "CONFLICT",
+              "IDEMPOTENCY_KEY_REUSED",
+              "UNIT_UNAVAILABLE",
+              "INVALID_STATE_TRANSITION",
+              "RECOMMENDATION_OUTDATED",
+              "INFERENCE_UNAVAILABLE",
+              "RATE_LIMITED",
+              "INTERNAL_ERROR"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "details": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "issue": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "issue"
+              ]
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requestId"
+        ],
+        "description": "Structured error body used by every non-2xx response.",
+        "examples": [
+          {
+            "code": "UNIT_UNAVAILABLE",
+            "message": "Unit E12 is no longer available.",
+            "requestId": "req_01HX",
+            "details": [
+              {
+                "field": "selectedUnitIds[0]",
+                "issue": "status=out_of_service"
+              }
+            ]
+          }
+        ]
+      },
+      "PageInfo": {
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "totalEstimate": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "nextCursor",
+          "limit"
+        ]
+      },
+      "Role": {
+        "type": "string",
+        "enum": [
+          "call_taker",
+          "dispatcher",
+          "supervisor",
+          "hr_training_admin",
+          "fleet_equipment_admin",
+          "department_leadership",
+          "system_admin"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agencyIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "minItems": 1
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "authMode": {
+            "type": "string",
+            "enum": [
+              "demo_adapter",
+              "oidc"
+            ]
+          }
+        },
+        "required": [
+          "userId",
+          "displayName",
+          "tenantId",
+          "roles",
+          "authMode"
+        ],
+        "description": "Current principal. authMode=demo_adapter is NOT production authentication."
+      },
+      "Health": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "degraded",
+              "down"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "time": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "examples": [
+                    "database",
+                    "inference",
+                    "event_stream"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "degraded",
+                    "down"
+                  ]
+                },
+                "detail": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "status"
+              ]
+            }
+          },
+          "architecture": {
+            "type": "string",
+            "examples": [
+              "s390x"
+            ]
+          },
+          "syntheticDataOnly": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "time"
+        ]
+      },
+      "GeoPoint": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "lon": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          }
+        },
+        "required": [
+          "lat",
+          "lon"
+        ]
+      },
+      "Location": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "point": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "jurisdictionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "geocodeConfidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "point"
+        ]
+      },
+      "Incident": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "string",
+            "examples": [
+              "INC-2026-000142"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "intake",
+              "pending_dispatch",
+              "recommendation_ready",
+              "dispatched_simulated",
+              "on_scene_simulated",
+              "resolved",
+              "cancelled"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4",
+              "unassigned"
+            ]
+          },
+          "priorityConfirmed": {
+            "type": "boolean"
+          },
+          "confirmedCategory": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IncidentCategory"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "narrative": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "callbackNumber": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Synthetic or masked in the demo."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Optimistic-concurrency version."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "incidentId",
+          "number",
+          "status",
+          "priority",
+          "narrative",
+          "location",
+          "version",
+          "createdAt",
+          "updatedAt",
+          "provenance"
+        ],
+        "examples": [
+          {
+            "incidentId": "3f0c1a52-8d4e-4e0b-9a55-1d2f3c4b5a60",
+            "number": "INC-2026-000142",
+            "status": "pending_dispatch",
+            "priority": "P1",
+            "priorityConfirmed": true,
+            "confirmedCategory": "structure_fire",
+            "narrative": "Synthetic: smoke visible from second-floor window, caller reports a person trapped.",
+            "location": {
+              "address": "100 Example St, Fictional County",
+              "point": {
+                "lat": 47.6101,
+                "lon": -122.3321
+              }
+            },
+            "version": 3,
+            "createdAt": "2026-03-01T14:02:11Z",
+            "updatedAt": "2026-03-01T14:03:40Z",
+            "provenance": {
+              "dataOrigin": "synthetic",
+              "sourceSystem": "responsematch-seed-v1",
+              "sourceTimestamp": "2026-03-01T14:00:00Z",
+              "verificationStatus": "verified",
+              "stale": false
+            }
+          }
+        ]
+      },
+      "IncidentCategory": {
+        "type": "string",
+        "enum": [
+          "structure_fire",
+          "vehicle_fire",
+          "wildland_fire",
+          "medical_cardiac",
+          "medical_trauma",
+          "medical_other",
+          "traffic_collision",
+          "technical_rescue",
+          "hazmat",
+          "assault",
+          "burglary",
+          "domestic_disturbance",
+          "welfare_check",
+          "other"
+        ]
+      },
+      "IncidentCreate": {
+        "type": "object",
+        "properties": {
+          "narrative": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "callbackNumber": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "reportedCategory": {
+            "$ref": "#/components/schemas/IncidentCategory"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4"
+            ]
+          },
+          "isSynthetic": {
+            "type": "boolean",
+            "const": true,
+            "description": "Must be true during the hackathon."
+          },
+          "mockScenarioId": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Demo only: tags the incident with a scripted scenario (e.g. 'A', 'B') for reproducible demonstrations."
+          }
+        },
+        "required": [
+          "narrative",
+          "location",
+          "isSynthetic"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Expected current version; mismatch yields 409 CONFLICT."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "intake",
+              "pending_dispatch",
+              "recommendation_ready",
+              "dispatched_simulated",
+              "on_scene_simulated",
+              "resolved",
+              "cancelled"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4"
+            ]
+          },
+          "priorityConfirmed": {
+            "type": "boolean"
+          },
+          "confirmedCategory": {
+            "$ref": "#/components/schemas/IncidentCategory"
+          },
+          "narrative": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "location": {
+            "$ref": "#/components/schemas/Location"
+          },
+          "callbackNumber": {
+            "type": "string",
+            "maxLength": 32
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "IncidentList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Incident"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "IncidentEvent": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "incidentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "created",
+              "updated",
+              "status_changed",
+              "classification_added",
+              "recommendation_created",
+              "recommendation_invalidated",
+              "review_recorded",
+              "unit_assigned_simulated",
+              "note"
+            ]
+          },
+          "actorId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "eventId",
+          "incidentId",
+          "sequence",
+          "type",
+          "occurredAt"
+        ]
+      },
+      "IncidentEventList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IncidentEvent"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "Classification": {
+        "type": "object",
+        "properties": {
+          "classificationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "incidentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "ml_inferred",
+              "rule_based",
+              "dispatcher_confirmed"
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/IncidentCategory"
+          },
+          "suggestedPriority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Null-equivalent (omitted) for dispatcher_confirmed."
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "policyVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "confirmed",
+              "rejected",
+              "superseded"
+            ]
+          },
+          "confirmedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "classificationId",
+          "incidentId",
+          "source",
+          "category",
+          "status",
+          "createdAt"
+        ],
+        "description": "Inferred and dispatcher-confirmed classifications are separate records."
+      },
+      "ClassificationCreate": {
+        "type": "object",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "infer",
+              "confirm",
+              "reject"
+            ]
+          },
+          "category": {
+            "$ref": "#/components/schemas/IncidentCategory"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "P1",
+              "P2",
+              "P3",
+              "P4"
+            ]
+          },
+          "inferredClassificationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "description": "mode=infer asks the backend to run inference; confirm/reject records a human decision."
+      },
+      "CapabilityRequirement": {
+        "type": "object",
+        "properties": {
+          "capabilityId": {
+            "type": "string",
+            "examples": [
+              "CAP-HAZMAT-TECH"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "personnel_qualification",
+              "apparatus",
+              "equipment",
+              "crew_size",
+              "authority"
+            ]
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "mandatory": {
+            "type": "boolean"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "protocol_rule",
+              "dispatcher_added",
+              "ml_suggested"
+            ]
+          },
+          "standardRef": {
+            "type": "string",
+            "examples": [
+              "FEMA NIMS RTL: Engine, Type 1"
+            ]
+          }
+        },
+        "required": [
+          "capabilityId",
+          "kind",
+          "mandatory",
+          "origin"
+        ]
+      },
+      "RequirementSet": {
+        "type": "object",
+        "properties": {
+          "incidentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "policyVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "requirements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityRequirement"
+            }
+          },
+          "basedOnClassificationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "incidentId",
+          "policyVersionId",
+          "requirements",
+          "generatedAt"
+        ]
+      },
+      "CapabilityCheck": {
+        "type": "object",
+        "properties": {
+          "capabilityId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "available",
+              "unavailable",
+              "expired",
+              "missing",
+              "unverified"
+            ]
+          },
+          "evidence": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "mandatory": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "capabilityId",
+          "state",
+          "mandatory"
+        ]
+      },
+      "Candidate": {
+        "type": "object",
+        "properties": {
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "callSign": {
+            "type": "string"
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "rank": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "etaSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "etaMethod": {
+            "type": "string",
+            "enum": [
+              "xgboost",
+              "routing_estimate",
+              "straight_line_fallback"
+            ]
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityCheck"
+            }
+          },
+          "ineligibleReasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rankingFactors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "factor": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "factor"
+              ]
+            }
+          },
+          "coverageImpact": {
+            "type": "string"
+          },
+          "dataFreshness": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "unitId",
+          "callSign",
+          "eligible",
+          "checks"
+        ]
+      },
+      "Recommendation": {
+        "type": "object",
+        "properties": {
+          "recommendationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "incidentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending_review",
+              "accepted",
+              "modified",
+              "rejected",
+              "invalidated",
+              "expired"
+            ]
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "hard_eligibility",
+              "prioritization",
+              "multi_incident_optimization"
+            ]
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            }
+          },
+          "packages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "packageId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "unitIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "satisfiesAllMandatory": {
+                  "type": "boolean"
+                },
+                "worstEtaSeconds": {
+                  "type": "integer"
+                },
+                "explanation": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "packageId",
+                "unitIds",
+                "satisfiesAllMandatory"
+              ]
+            }
+          },
+          "inputs": {
+            "type": "object",
+            "properties": {
+              "requirementSetGeneratedAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 UTC timestamp"
+              },
+              "unitSnapshotAt": {
+                "type": "string",
+                "format": "date-time",
+                "description": "ISO 8601 UTC timestamp"
+              },
+              "classificationId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "modelVersions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "optimizer": {
+                "type": "string",
+                "examples": [
+                  "ortools-cp-sat"
+                ]
+              }
+            }
+          },
+          "policyVersionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "invalidatedReason": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          },
+          "humanConfirmationRequired": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "recommendationId",
+          "incidentId",
+          "status",
+          "stage",
+          "candidates",
+          "policyVersionId",
+          "inputs",
+          "createdAt",
+          "humanConfirmationRequired"
+        ],
+        "description": "Decision support only. Never an autonomous dispatch order.",
+        "examples": [
+          {
+            "recommendationId": "5d9f7e10-2b64-4c1d-8a37-0e1f2a3b4c5d",
+            "incidentId": "3f0c1a52-8d4e-4e0b-9a55-1d2f3c4b5a60",
+            "status": "pending_review",
+            "stage": "prioritization",
+            "candidates": [
+              {
+                "unitId": "9b1d6a30-5c7e-4a8a-b0f1-2a3c4d5e6f70",
+                "callSign": "E12",
+                "eligible": true,
+                "rank": 1,
+                "etaSeconds": 214,
+                "etaMethod": "xgboost",
+                "checks": [
+                  {
+                    "capabilityId": "CAP-FIRE-SUPPRESSION",
+                    "state": "available",
+                    "mandatory": true
+                  }
+                ],
+                "ineligibleReasons": [],
+                "rankingFactors": [
+                  {
+                    "factor": "eta",
+                    "value": "214s"
+                  }
+                ]
+              },
+              {
+                "unitId": "c2e8f4a1-7b3d-4c59-8e12-6f7a8b9c0d11",
+                "callSign": "L4",
+                "eligible": false,
+                "rank": null,
+                "etaSeconds": 190,
+                "etaMethod": "routing_estimate",
+                "checks": [
+                  {
+                    "capabilityId": "CAP-TECH-RESCUE",
+                    "state": "expired",
+                    "mandatory": true
+                  }
+                ],
+                "ineligibleReasons": [
+                  "Mandatory credential expired"
+                ]
+              }
+            ],
+            "inputs": {
+              "requirementSetGeneratedAt": "2026-03-01T14:03:00Z",
+              "unitSnapshotAt": "2026-03-01T14:03:30Z",
+              "modelVersions": [
+                "xgb-eta-0.1"
+              ]
+            },
+            "policyVersionId": "a1b2c3d4-e5f6-4789-9abc-def012345678",
+            "confidence": 0.82,
+            "limitations": [
+              "ETA model trained on synthetic data"
+            ],
+            "createdAt": "2026-03-01T14:03:31Z",
+            "humanConfirmationRequired": true
+          }
+        ]
+      },
+      "RecommendationList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Recommendation"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "RecommendationCreate": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "single_incident",
+              "multi_incident"
+            ]
+          },
+          "additionalIncidentIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "maxCandidates": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          },
+          "excludeUnitIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "policyVersionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "ReviewCreate": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "modify",
+              "reject"
+            ]
+          },
+          "selectedUnitIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "explanation": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "overrideReason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "Required when selecting an ineligible or lower-ranked unit."
+          },
+          "humanConfirmed": {
+            "type": "boolean",
+            "const": true
+          },
+          "recommendationVersionSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          }
+        },
+        "required": [
+          "decision",
+          "humanConfirmed"
+        ],
+        "additionalProperties": false
+      },
+      "RecommendationReview": {
+        "type": "object",
+        "properties": {
+          "reviewId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "recommendationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reviewerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "modify",
+              "reject"
+            ]
+          },
+          "selectedUnitIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "overrideReason": {
+            "type": "string"
+          },
+          "isOverride": {
+            "type": "boolean"
+          },
+          "simulatedAssignment": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          }
+        },
+        "required": [
+          "reviewId",
+          "recommendationId",
+          "reviewerId",
+          "decision",
+          "isOverride",
+          "simulatedAssignment",
+          "createdAt"
+        ],
+        "description": "simulatedAssignment is always true: no CAD integration."
+      },
+      "Unit": {
+        "type": "object",
+        "properties": {
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agencyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "callSign": {
+            "type": "string",
+            "examples": [
+              "E12"
+            ]
+          },
+          "discipline": {
+            "type": "string",
+            "enum": [
+              "fire",
+              "police",
+              "ems"
+            ]
+          },
+          "unitType": {
+            "type": "string",
+            "examples": [
+              "Engine Type 1",
+              "ALS Ambulance"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "dispatched_simulated",
+              "en_route_simulated",
+              "on_scene_simulated",
+              "returning",
+              "out_of_service",
+              "off_duty"
+            ]
+          },
+          "stationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "apparatusId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "location": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "crewPersonnelIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "minimumCrew": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "version": {
+            "type": "integer"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "unitId",
+          "agencyId",
+          "callSign",
+          "discipline",
+          "status",
+          "provenance"
+        ],
+        "examples": [
+          {
+            "unitId": "9b1d6a30-5c7e-4a8a-b0f1-2a3c4d5e6f70",
+            "agencyId": "c2e8f4a1-7b3d-4c59-8e12-6f7a8b9c0d11",
+            "callSign": "E12",
+            "discipline": "fire",
+            "unitType": "Engine Type 1",
+            "status": "available",
+            "location": {
+              "lat": 47.6062,
+              "lon": -122.3321
+            },
+            "minimumCrew": 4,
+            "version": 7,
+            "provenance": {
+              "dataOrigin": "simulated",
+              "sourceSystem": "responsematch-seed-v1",
+              "sourceTimestamp": "2026-03-01T14:00:00Z",
+              "verificationStatus": "verified",
+              "stale": false
+            }
+          }
+        ]
+      },
+      "UnitList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Unit"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "Facility": {
+        "type": "object",
+        "properties": {
+          "facilityId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agencyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "fire_station",
+              "police_station",
+              "ems_station",
+              "hospital",
+              "eoc"
+            ]
+          },
+          "location": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "serviceAreaId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "facilityId",
+          "agencyId",
+          "name",
+          "type",
+          "location",
+          "provenance"
+        ]
+      },
+      "FacilityList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Facility"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "Apparatus": {
+        "type": "object",
+        "properties": {
+          "apparatusId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agencyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "examples": [
+              "Engine Type 1"
+            ]
+          },
+          "nimsTypeRef": {
+            "type": "string"
+          },
+          "readiness": {
+            "type": "string",
+            "enum": [
+              "ready",
+              "limited",
+              "maintenance",
+              "out_of_service"
+            ]
+          },
+          "equipment": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "equipmentId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "capabilityIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "readiness": {
+                  "type": "string",
+                  "enum": [
+                    "ready",
+                    "limited",
+                    "maintenance",
+                    "missing"
+                  ]
+                },
+                "lastInspectedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 UTC timestamp"
+                }
+              },
+              "required": [
+                "equipmentId",
+                "name",
+                "readiness"
+              ]
+            }
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "apparatusId",
+          "agencyId",
+          "identifier",
+          "type",
+          "readiness",
+          "provenance"
+        ]
+      },
+      "ApparatusList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Apparatus"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "CapabilityDefinition": {
+        "type": "object",
+        "properties": {
+          "capabilityId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "personnel_qualification",
+              "apparatus",
+              "equipment",
+              "crew_size",
+              "authority"
+            ]
+          },
+          "standardRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "e.g. FEMA NIMS RTL, NFPA 1001, NEMSIS scope of practice."
+          },
+          "requiresCredentialDefinitionIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "capabilityId",
+          "label",
+          "kind"
+        ]
+      },
+      "CapabilityDefinitionList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityDefinition"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "UnitCapabilities": {
+        "type": "object",
+        "properties": {
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "capabilityId": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "available",
+                    "unavailable",
+                    "expired",
+                    "missing",
+                    "unverified"
+                  ]
+                },
+                "evidence": {
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "ISO 8601 UTC timestamp"
+                },
+                "provenance": {
+                  "$ref": "#/components/schemas/Provenance"
+                }
+              },
+              "required": [
+                "capabilityId",
+                "state"
+              ]
+            }
+          }
+        },
+        "required": [
+          "unitId",
+          "evaluatedAt",
+          "capabilities"
+        ],
+        "examples": [
+          {
+            "unitId": "9b1d6a30-5c7e-4a8a-b0f1-2a3c4d5e6f70",
+            "evaluatedAt": "2026-03-01T14:03:00Z",
+            "capabilities": [
+              {
+                "capabilityId": "CAP-FIRE-SUPPRESSION",
+                "state": "available"
+              },
+              {
+                "capabilityId": "CAP-TECH-RESCUE",
+                "state": "expired",
+                "evidence": "Credential CRED-TRT-1 expired 2026-02-10"
+              },
+              {
+                "capabilityId": "CAP-ALS",
+                "state": "missing"
+              },
+              {
+                "capabilityId": "CAP-THERMAL-CAMERA",
+                "state": "unverified"
+              },
+              {
+                "capabilityId": "CAP-HAZMAT-OPS",
+                "state": "unavailable",
+                "evidence": "Equipment in maintenance"
+              }
+            ]
+          }
+        ]
+      },
+      "UnitStatusEventCreate": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "dispatched_simulated",
+              "en_route_simulated",
+              "on_scene_simulated",
+              "returning",
+              "out_of_service",
+              "off_duty"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "location": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "effectiveAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "expectedUnitVersion": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "UnitStatusEvent": {
+        "type": "object",
+        "properties": {
+          "statusEventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "unitId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "dispatched_simulated",
+              "en_route_simulated",
+              "on_scene_simulated",
+              "returning",
+              "out_of_service",
+              "off_duty"
+            ]
+          },
+          "previousStatus": {
+            "type": "string",
+            "enum": [
+              "available",
+              "dispatched_simulated",
+              "en_route_simulated",
+              "on_scene_simulated",
+              "returning",
+              "out_of_service",
+              "off_duty"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "recordedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "effectiveAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "invalidatedRecommendationIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "statusEventId",
+          "unitId",
+          "status",
+          "recordedAt"
+        ]
+      },
+      "Personnel": {
+        "type": "object",
+        "properties": {
+          "personnelId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "agencyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Synthetic name."
+          },
+          "role": {
+            "type": "string",
+            "examples": [
+              "Firefighter/Paramedic"
+            ]
+          },
+          "stationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employmentStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "leave",
+              "inactive"
+            ]
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "personnelId",
+          "agencyId",
+          "displayName",
+          "role",
+          "employmentStatus",
+          "provenance"
+        ]
+      },
+      "PersonnelList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Personnel"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "Credential": {
+        "type": "object",
+        "properties": {
+          "credentialId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "personnelId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "credentialDefinitionId": {
+            "type": "string",
+            "examples": [
+              "CRED-NREMT-PARAMEDIC"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "expired",
+              "unverified",
+              "revoked"
+            ]
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "verifiedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "verifiedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "credentialId",
+          "personnelId",
+          "credentialDefinitionId",
+          "state",
+          "provenance"
+        ]
+      },
+      "CredentialList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Credential"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "CredentialCreate": {
+        "type": "object",
+        "properties": {
+          "credentialDefinitionId": {
+            "type": "string"
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "evidenceRef": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "credentialDefinitionId"
+        ],
+        "additionalProperties": false
+      },
+      "CredentialUpdate": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "valid",
+              "expired",
+              "unverified",
+              "revoked"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "evidenceRef": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "ForecastPoint": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "predicted": {
+            "type": "number",
+            "minimum": 0
+          },
+          "lower": {
+            "type": "number"
+          },
+          "upper": {
+            "type": "number"
+          },
+          "observed": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "predicted"
+        ]
+      },
+      "Forecast": {
+        "type": "object",
+        "properties": {
+          "forecastId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serviceAreaId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "discipline": {
+            "type": "string",
+            "enum": [
+              "fire",
+              "police",
+              "ems",
+              "rescue",
+              "hazmat",
+              "other"
+            ]
+          },
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day"
+            ]
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "examples": [
+                  "granite-timeseries-ttm-r2"
+                ]
+              },
+              "framework": {
+                "type": "string",
+                "enum": [
+                  "pytorch",
+                  "xgboost",
+                  "baseline"
+                ]
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "framework"
+            ]
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            }
+          },
+          "baseline": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            }
+          },
+          "evaluation": {
+            "type": "object",
+            "properties": {
+              "mae": {
+                "type": "number"
+              },
+              "baselineMae": {
+                "type": "number"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          },
+          "disclaimer": {
+            "type": "string",
+            "examples": [
+              "Forecasts emergency service demand, not individual behaviour. Trained/evaluated on synthetic data; not operational accuracy."
+            ]
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "forecastId",
+          "serviceAreaId",
+          "granularity",
+          "model",
+          "points",
+          "generatedAt",
+          "provenance"
+        ]
+      },
+      "ForecastList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Forecast"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "CoverageCell": {
+        "type": "object",
+        "properties": {
+          "serviceAreaId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "capabilityId": {
+            "type": "string"
+          },
+          "required": {
+            "type": "integer"
+          },
+          "scheduled": {
+            "type": "integer"
+          },
+          "available": {
+            "type": "integer"
+          },
+          "dataKind": {
+            "type": "string",
+            "enum": [
+              "observed",
+              "predicted",
+              "scenario"
+            ]
+          }
+        },
+        "required": [
+          "serviceAreaId",
+          "windowStart",
+          "windowEnd",
+          "capabilityId",
+          "required",
+          "scheduled",
+          "dataKind"
+        ]
+      },
+      "CoverageReport": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoverageCell"
+            }
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "cells"
+        ]
+      },
+      "CoverageGap": {
+        "type": "object",
+        "properties": {
+          "gapId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "capabilityId": {
+            "type": "string"
+          },
+          "serviceAreaId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cause": {
+            "type": "string",
+            "enum": [
+              "missing_qualification",
+              "equipment_unavailable",
+              "insufficient_staff",
+              "mutual_aid_dependency",
+              "unknown"
+            ]
+          },
+          "occurrences": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "firstObservedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "lastObservedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "dataKind": {
+            "type": "string",
+            "enum": [
+              "observed",
+              "predicted"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "gapId",
+          "capabilityId",
+          "cause",
+          "occurrences",
+          "dataKind"
+        ]
+      },
+      "CoverageGapList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CoverageGap"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "Shift": {
+        "type": "object",
+        "properties": {
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "label": {
+            "type": "string",
+            "examples": [
+              "A-Shift"
+            ]
+          },
+          "start": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "end": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "assignedPersonnelIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "minimumStaffing": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "shiftId",
+          "stationId",
+          "start",
+          "end"
+        ]
+      },
+      "ShiftList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Shift"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "ScenarioAssumption": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {},
+          "unit": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ]
+      },
+      "ScenarioCreate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "shift_adjustment",
+              "training_intervention",
+              "equipment_purchase",
+              "mutual_aid_change",
+              "staffing_change"
+            ]
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScenarioAssumption"
+            }
+          },
+          "baselineForecastId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "constraints": {
+            "type": "object",
+            "properties": {
+              "minimumStaffing": {
+                "type": "integer"
+              },
+              "maxConsecutiveHours": {
+                "type": "integer"
+              },
+              "budgetLimit": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "assumptions"
+        ]
+      },
+      "Scenario": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScenarioAssumption"
+            }
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "latestEvaluationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "scenarioId",
+          "name",
+          "type",
+          "assumptions",
+          "createdAt"
+        ]
+      },
+      "ScenarioEvaluation": {
+        "type": "object",
+        "properties": {
+          "evaluationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scenarioId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "baseline": {
+            "$ref": "#/components/schemas/CoverageReport"
+          },
+          "projected": {
+            "$ref": "#/components/schemas/CoverageReport"
+          },
+          "gapsResolved": {
+            "type": "integer"
+          },
+          "gapsRemaining": {
+            "type": "integer"
+          },
+          "estimatedCost": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string",
+            "examples": [
+              "USD"
+            ]
+          },
+          "risks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dataKind": {
+            "type": "string",
+            "const": "scenario"
+          },
+          "disclaimer": {
+            "type": "string",
+            "examples": [
+              "Simulated outcome under stated assumptions; not a guarantee of improved safety."
+            ]
+          }
+        },
+        "required": [
+          "evaluationId",
+          "scenarioId",
+          "evaluatedAt",
+          "projected",
+          "dataKind",
+          "disclaimer"
+        ]
+      },
+      "ReadinessSummary": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "agencyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "overallReadiness": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "byCapability": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "capabilityId": {
+                  "type": "string"
+                },
+                "readiness": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "trend": {
+                  "type": "string",
+                  "enum": [
+                    "improving",
+                    "stable",
+                    "declining"
+                  ]
+                }
+              },
+              "required": [
+                "capabilityId",
+                "readiness"
+              ]
+            }
+          },
+          "mutualAidDependencyRate": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "generatedAt",
+          "overallReadiness",
+          "byCapability"
+        ]
+      },
+      "TrainingGap": {
+        "type": "object",
+        "properties": {
+          "capabilityId": {
+            "type": "string"
+          },
+          "credentialDefinitionId": {
+            "type": "string"
+          },
+          "qualifiedCount": {
+            "type": "integer"
+          },
+          "requiredCount": {
+            "type": "integer"
+          },
+          "expiringWithin90Days": {
+            "type": "integer"
+          },
+          "affectedShiftIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "capabilityId",
+          "qualifiedCount",
+          "requiredCount"
+        ]
+      },
+      "EquipmentGap": {
+        "type": "object",
+        "properties": {
+          "capabilityId": {
+            "type": "string"
+          },
+          "equipmentType": {
+            "type": "string"
+          },
+          "readyCount": {
+            "type": "integer"
+          },
+          "requiredCount": {
+            "type": "integer"
+          },
+          "downtimeHours30d": {
+            "type": "number"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "capabilityId",
+          "readyCount",
+          "requiredCount"
+        ]
+      },
+      "TrainingGapList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrainingGap"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "EquipmentGapList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EquipmentGap"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "LeadershipRecommendation": {
+        "type": "object",
+        "properties": {
+          "recommendationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "training",
+              "equipment",
+              "staffing",
+              "scheduling",
+              "mutual_aid"
+            ]
+          },
+          "supportingObservations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": {
+                  "type": "string"
+                },
+                "gapId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "metric": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "description"
+              ]
+            },
+            "minItems": 1
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScenarioAssumption"
+            }
+          },
+          "alternatives": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "relatedScenarioId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "advisoryOnly": {
+            "type": "boolean",
+            "const": true
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/Provenance"
+          }
+        },
+        "required": [
+          "recommendationId",
+          "title",
+          "summary",
+          "category",
+          "supportingObservations",
+          "assumptions",
+          "advisoryOnly",
+          "generatedAt"
+        ],
+        "description": "Advisory only. Does not authorize spending, assignments, or protocol changes."
+      },
+      "LeadershipRecommendationList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LeadershipRecommendation"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "AuditEvent": {
+        "type": "object",
+        "properties": {
+          "auditId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "actorId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorRoles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            }
+          },
+          "action": {
+            "type": "string",
+            "examples": [
+              "recommendation.review.accept"
+            ]
+          },
+          "entityType": {
+            "type": "string"
+          },
+          "entityId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "denied",
+              "error"
+            ]
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "auditId",
+          "occurredAt",
+          "action",
+          "entityType",
+          "outcome"
+        ]
+      },
+      "AuditEventList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEvent"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "Policy": {
+        "type": "object",
+        "properties": {
+          "policyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "dispatch_protocol",
+              "eligibility_rules",
+              "prioritization",
+              "optimization",
+              "model_config"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "examples": [
+              "1.0.0"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "active",
+              "retired"
+            ]
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "supersedesPolicyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "definition": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "standardRefs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "policyId",
+          "name",
+          "kind",
+          "version",
+          "status"
+        ]
+      },
+      "PolicyList": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Policy"
+            }
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageInfo"
+          }
+        },
+        "required": [
+          "data",
+          "page"
+        ]
+      },
+      "EventEnvelope": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Monotonically increasing per-tenant sequence, also sent as SSE `id:` for Last-Event-ID replay.",
+            "examples": [
+              "000000000123"
+            ]
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "incident.created",
+              "incident.updated",
+              "unit.status_changed",
+              "recommendation.created",
+              "recommendation.invalidated",
+              "coverage.gap_detected",
+              "stream.resync_required",
+              "stream.heartbeat"
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "entity": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "incident",
+                  "unit",
+                  "recommendation",
+                  "coverage_gap",
+                  "none"
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Entity version after this change."
+          },
+          "schemaVersion": {
+            "type": "string",
+            "examples": [
+              "1"
+            ]
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "timestamp",
+          "entity",
+          "version",
+          "payload"
+        ],
+        "description": "Common envelope for every SSE `data:` frame. Payloads per type are in docs/event-catalog."
+      },
+      "DemoResetResult": {
+        "type": "object",
+        "properties": {
+          "resetAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 UTC timestamp"
+          },
+          "seedVersion": {
+            "type": "string"
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        },
+        "required": [
+          "resetAt",
+          "seedVersion"
+        ]
+      }
+    },
+    "parameters": {
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        }
+      },
+      "Cursor": {
+        "name": "cursor",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Opaque cursor from page.nextCursor."
+      },
+      "Sort": {
+        "name": "sort",
+        "in": "query",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "examples": [
+            "-createdAt"
+          ]
+        },
+        "description": "Comma-separated fields; prefix '-' for descending."
+      },
+      "IdemKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128
+        },
+        "description": "Client-generated key; replays return the original response."
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Entity version for optimistic concurrency."
+      },
+      "IncidentId": {
+        "name": "incidentId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "RecommendationId": {
+        "name": "recommendationId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "UnitId": {
+        "name": "unitId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "PersonnelId": {
+        "name": "personnelId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "CredentialId": {
+        "name": "credentialId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "ScenarioId": {
+        "name": "scenarioId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "PolicyId": {
+        "name": "policyId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "LastEventId": {
+        "name": "Last-Event-ID",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Resume after this event id; server replays missed events or sends stream.resync_required."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "VALIDATION_ERROR",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "UNAUTHENTICATED",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "FORBIDDEN",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "NOT_FOUND",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "CONFLICT, UNIT_UNAVAILABLE, INVALID_STATE_TRANSITION, RECOMMENDATION_OUTDATED, IDEMPOTENCY_KEY_REUSED or STALE_DATA",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "INFERENCE_UNAVAILABLE or service degraded",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      }
+    }
+  }
+}
