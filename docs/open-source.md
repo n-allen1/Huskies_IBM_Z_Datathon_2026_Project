@@ -21,6 +21,7 @@ All application code in this repository was written for the Datathon.
 | Hugging Face Transformers | Loads the model and tokenizer | <https://github.com/huggingface/transformers> |
 | IBM Granite Embedding 30M English | Pretrained model for incident classification (Apache-2.0, verified on the model card) | <https://huggingface.co/ibm-granite/granite-embedding-30m-english> |
 | XGBoost | ETA regression model | <https://github.com/dmlc/xgboost> |
+| SciPy (`scipy.optimize.milp`, HiGHS) | Exact solver for the multi-incident allocation | <https://scipy.org/> |
 | NumPy | Array handling for the ETA model | <https://github.com/numpy/numpy> |
 
 ## IBM-provided platform components

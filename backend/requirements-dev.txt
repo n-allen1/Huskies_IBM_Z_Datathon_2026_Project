@@ -6,5 +6,6 @@ openapi-spec-validator
 rfc3339-validator
 datamodel-code-generator
 
-# Local only: the LinuxONE image ships xgboost/numpy; tests that need them skip without it.
+# Local only: the LinuxONE image ships xgboost, numpy and scipy; tests that need them skip without them.
 xgboost
+scipy

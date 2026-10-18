@@ -1,3 +1,4 @@
 # CI "full" backend job: also xgboost, so the ETA model tests run. Resolved into full.lock by scripts/lock_ci.py.
 -r minimal.in
 xgboost
+scipy

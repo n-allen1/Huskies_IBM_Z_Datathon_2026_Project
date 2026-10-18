@@ -56,6 +56,9 @@ These hold by construction and are enforced by tests in `backend/tests/`:
   a stated limitation. An unconfirmed model suggestion is ignored (`test_embedding_classifier.py`).
 - **Failures degrade, not break.** A missing model, a load failure and a runtime failure each fall back and are reported as
   `degraded`; the accelerator falling back to CPU is covered by a test.
+- **The optimizer cannot change eligibility either.** It receives only units that already passed hard eligibility for each incident
+  (`test_multi_incident.py::test_only_eligible_units_are_ever_allocated`), never reuses a unit across incidents, and degrades to a
+  labeled fallback when the solver is unavailable or fails (`test_multi_incident_solver.py`).
 - **A human decides.** Assignment happens only through a recorded review; overriding an ineligible unit needs a reason and is audited.
 
 ## IBM Z: the NNPA accelerator
@@ -120,9 +123,50 @@ docker run --rm dispatchz-api sh -c 'exec $PYTHON -m tools.nnpa_check --sweep --
 docker run --rm dispatchz-api sh -c 'exec $PYTHON -m tools.eta_eval'
 ```
 
+## Multi-incident allocation
+
+When incidents compete for the same units, `POST /incidents/{id}/recommendations` with `scope: multi_incident` and
+`additionalIncidentIds` plans them together (contract stage `multi_incident_optimization`; no contract change was needed, the
+contract already defined these fields). The code is `backend/app/multi_incident.py`.
+
+**What it decides.** Only who goes where among units that are already hard-eligible. Eligibility, requirements and ETAs are computed
+per incident first, and an incident's list of usable units contains only units that passed eligibility for it, so the optimizer cannot
+send an ineligible unit anywhere.
+
+**Objective, strictly in this order:**
+1. Fully staff the highest-priority incident, then the next, and so on.
+2. Cover as many individual requirement slots as possible, highest priority first, so a shortage lands on the lowest priority.
+3. Minimize total estimated arrival time of the units used (each used unit also costs one second, so nothing unnecessary is sent).
+
+**Who wins a contested unit.** The incident whose priority (P1 to P4) a person set, then the earlier incident. The system does not
+invent priorities: an unset priority ranks below P4, and an unconfirmed one is stated as a limitation on the recommendation.
+
+**How it is solved.** Exactly, with `scipy.optimize.milp` (HiGHS), one small mixed-integer solve per objective level. SciPy ships in
+IBM's LinuxONE image; OR-Tools, which the contract's `optimizer` example names, has no s390x build. Without SciPy, or if the solver
+fails, it falls back to a greedy allocation in priority order. The response says which ran in `inputs.optimizer`
+(`scipy-highs-milp-lexicographic` or `priority-greedy-fallback`) and the fallback adds a limitation.
+
+**What the response contains.** The part of the joint plan that applies to the incident asked about: `packages[0]` is its units, the
+explanation states the whole plan, and the limitations list units that are eligible here but allocated elsewhere and any incident that
+cannot be fully staffed. The same inputs give the same plan whichever incident asks, so a dispatcher asks once per incident
+with the same incident set to get each part. Nothing is stored or changed for the other incidents. A person still reviews and accepts
+each recommendation.
+
+**Verified.** The solver is checked against a brute-force oracle on 150 random instances (it reaches the best lexicographic score on
+all of them; the greedy fallback is suboptimal on 20 of them, which is why the exact solver exists), and a hand-built case where greedy
+strands the second incident. Through the API, the tests cover validation, priority and tie-breaking, exclusion, a solver failure, and
+that two uncontested incidents can both be accepted. On the VM, a hazmat P1 and a technical-rescue P2 that need the one unit
+(HR4) were planned by the SciPy solver: HR4 went to the P1 incident, and the P2 recommendation said HR4 was allocated to the higher
+priority and listed its unmet requirements.
+
+**Limits.** At most five incidents per request. The allocation uses straight-line or modeled ETAs, not road routing. It plans the
+moment of the request; it does not re-plan on its own when units change status (a recommendation that includes a unit that is
+assigned elsewhere is invalidated, as for any recommendation).
+
 ## Planned, not implemented
 
 - Demand forecasting (for example IBM Granite TinyTimeMixer) for the Planning module.
 - Calibrated classifier confidence and a larger, independently labeled evaluation set.
 - ETA from real travel-time history or a routing engine.
-- Multi-incident optimization (for example OR-Tools); the API currently rejects `scope: multi_incident`.
+- A solver for more than a handful of simultaneous incidents (the current exact solver is capped at five per request, and OR-Tools has
+  no s390x build).

@@ -190,12 +190,6 @@ def test_recommendation_expires(settings):
     assert api.call("getRecommendation", path={"recommendationId": rec["recommendationId"]}, expect=200).json()["status"] == "expired"
 
 
-def test_multi_incident_scope_is_not_supported_yet(api, make_incident):
-    inc = make_incident(confirm="structure_fire")
-    r = api.call("createRecommendation", path={"incidentId": inc["incidentId"]}, json={"scope": "multi_incident"}, expect=400)
-    assert r.json()["code"] == "VALIDATION_ERROR"
-
-
 def test_recommendation_is_idempotent_and_detects_key_reuse(api, make_incident):
     inc = make_incident(confirm="vehicle_fire")
     path = {"incidentId": inc["incidentId"]}

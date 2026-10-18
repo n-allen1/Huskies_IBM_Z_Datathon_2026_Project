@@ -139,7 +139,7 @@ Do these in a pull request. CI then runs the whole suite against the new version
 - **A CI Python package:** edit `.github/pins/minimal.in` or `full.in`, run `pip install uv==0.13.1` and `python scripts/lock_ci.py`,
   and commit the changed `.lock` files. The script resolves for Linux and Python 3.12 whatever machine you run it on.
 - **A package on the VM (for example FastAPI):** edit `backend/constraints.txt`, then try it from your branch with
-  `bash scripts/deploy_vm.sh --dev` (it does not touch the demo) or read the PR's CI result; the Docker build and the 167 tests on s390x are the real check. Run `scripts/lock_ci.py`
+  `bash scripts/deploy_vm.sh --dev` (it does not touch the demo) or read the PR's CI result; the Docker build and the full test suite on s390x are the real check. Run `scripts/lock_ci.py`
   too, because the CI locks are resolved against that file.
 - **IBM's base image:** on the VM, `docker pull` the new image, read its digest with
   `docker image inspect --format '{{index .RepoDigests 0}}' <image>`, put it in the Dockerfile, refresh

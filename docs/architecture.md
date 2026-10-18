@@ -12,6 +12,7 @@ This document describes the system as it exists on `main` today. Planned work is
 |---|---|---|---|
 | API (REST + server-sent events) | FastAPI, Pydantic, Uvicorn (single worker) | Docker container on the LinuxONE VM; locally in a venv | Implemented: all 20 `mvp`-tier operations plus `listAuditEvents` |
 | Rules engine (protocol, eligibility, ranking) | Pure Python, `backend/app/eligibility.py` | Inside the API | Implemented |
+| Multi-incident allocator | Exact mixed-integer solve (SciPy/HiGHS), greedy fallback; `backend/app/multi_incident.py` | Inside the API | Implemented; see [ai-pipeline.md](ai-pipeline.md#multi-incident-allocation) |
 | Incident classifier | PyTorch + IBM Granite Embedding 30M, keyword fallback | Inside the API container; model on the Telum NNPA accelerator in fp16, CPU fallback | Implemented; see [ai-pipeline.md](ai-pipeline.md) |
 | ETA model | XGBoost, trained at start-up on a synthetic simulator, straight-line fallback | Inside the API | Implemented; synthetic training data |
 | Store | In-memory, behind the `Store` interface in `backend/app/store.py` | Inside the API | Implemented; data is lost on restart |
@@ -76,7 +77,7 @@ flowchart TD
     E["Dispatcher confirms or corrects the category<br/>HUMAN DECISION"] --> F["Protocol maps the category<br/>to required capabilities"]
     F --> G["Stage 1: hard eligibility per unit<br/>status, staffing, credentials, equipment"]
     G --> H["Stage 2: rank eligible units by ETA<br/>XGBoost, straight-line fallback"]
-    H --> I["Package of units covering the<br/>mandatory requirements; unmet ones listed"]
+    H --> I["Package of units covering the<br/>mandatory requirements; unmet ones listed<br/>(scope multi_incident: one joint allocation across<br/>the contesting incidents, by priority)"]
     I --> J["Recommendation: pending_review"]
     J --> K{"Dispatcher review<br/>POST /recommendations/{id}/reviews<br/>HUMAN DECISION"}
     K -->|"accept or modify"| L["Simulated assignment: units become<br/>dispatched_simulated; competing<br/>recommendations are invalidated"]
@@ -87,11 +88,9 @@ flowchart TD
 
     subgraph Planned["Planned, not implemented"]
         P1["Road-network routing"]
-        P2["Multi-incident optimization"]
         P3["Persistence in PostgreSQL"]
     end
     H -.-> P1
-    I -.-> P2
     B -.-> P3
 ```
 
@@ -109,6 +108,11 @@ of any standard's minimums. Eligibility (`backend/app/eligibility.py`):
    accepted. Capabilities come from active crew credentials and ready equipment, not from what a station owns.
 2. **Ranking.** Only eligible units get a rank: ETA, then coverage impact, then call sign.
 3. **Package.** A greedy cover of the mandatory requirements. Whatever cannot be filled is stated in `limitations`.
+
+4. **Joint allocation (optional, `scope: multi_incident`).** When several incidents contest the same units, steps 1 and 2 run for
+   each incident and an exact solver then assigns units across them: the highest-priority incident is staffed first, shortages fall on
+   the lowest priority, and nothing ineligible can be chosen. The response is the asked-about incident's part of that one plan. See
+   [ai-pipeline.md](ai-pipeline.md#multi-incident-allocation).
 
 A dispatcher can override a recommendation (an ineligible or non-recommended unit) only with an `overrideReason`; it is recorded as
 an override. A unit that is not `available` right now can never be assigned.
@@ -176,6 +180,6 @@ Not implemented: a real identity provider, TLS termination, encryption at rest, 
 
 ## Planned work
 
-Planning and Insights modules (demand forecasting, gap detection, leadership reports; contract tier `future`), multi-incident
-optimization (`scope: multi_incident` currently returns `400`), road-network routing, PostgreSQL persistence, and a calibrated
+Planning and Insights modules (demand forecasting, gap detection, leadership reports; contract tier `future`),
+road-network routing, PostgreSQL persistence, and a calibrated
 classifier confidence. See [mvp-plan.md](mvp-plan.md) for the original scope and tiers.
