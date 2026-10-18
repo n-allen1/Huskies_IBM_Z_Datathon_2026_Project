@@ -134,8 +134,8 @@ Do these in a pull request. CI then runs the whole suite against the new version
 - **Runner, Python or Node in CI:** edit `runs-on` or `env:` in the workflow.
 - **An action:** pick a tag, then use its commit SHA and keep the version comment.
   `git ls-remote --tags https://github.com/actions/checkout 'refs/tags/v6*'` (for an annotated tag use the SHA on the `^{}` line).
-- **A CI Python package:** edit `.github/pins/minimal.in` or `full.in`, run `python scripts/lock_ci.py` (needs pip 23.1 or newer),
-  and commit the changed `.lock` files.
+- **A CI Python package:** edit `.github/pins/minimal.in` or `full.in`, run `pip install uv==0.13.1` and `python scripts/lock_ci.py`,
+  and commit the changed `.lock` files. The script resolves for Linux and Python 3.12 whatever machine you run it on.
 - **A package on the VM (for example FastAPI):** edit `backend/constraints.txt`, then run `bash scripts/deploy_vm.sh` from a branch
   or read the PR's CI result after merge; the Docker build and the 167 tests on s390x are the real check. Run `scripts/lock_ci.py`
   too, because the CI locks are resolved against that file.
