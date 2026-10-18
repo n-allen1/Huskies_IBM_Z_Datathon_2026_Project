@@ -421,7 +421,15 @@
           {/each}
         </ul>
         {#if c.rankingFactors?.length}
-          <p class="mt-1.5 text-muted">Ranking factors: {c.rankingFactors.map((f) => `${f.factor}${f.value ? ' ' + f.value : ''}`).join('; ')}</p>
+          <p class="mt-1.5 text-muted">Ranking factors:</p>
+          <ul class="mt-0.5 list-disc space-y-0.5 pl-4 text-muted">
+            {#each c.rankingFactors as f}
+              <li>
+                <span class="text-fg">{f.factor.replaceAll('_', ' ')}{f.value ? ': ' + f.value : ''}</span>
+                {#if f.note}<span class="block">{f.note}</span>{/if}
+              </li>
+            {/each}
+          </ul>
         {/if}
         {#if c.coverageImpact}<p class="mt-1 text-muted">Coverage impact: {c.coverageImpact}</p>{/if}
         <button

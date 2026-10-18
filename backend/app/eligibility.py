@@ -276,7 +276,7 @@ def evaluate(
 
     shown = (eligible + ineligible)[:max_candidates]
     rank_of = {id(e): i for i, e in enumerate(eligible, start=1)}
-    candidates = [_to_candidate(e, rank_of.get(id(e)), requirements, mandatory) for e in shown]
+    candidates = [_to_candidate(e, rank_of.get(id(e)), requirements, mandatory, eligible) for e in shown]
     return Evaluation(
         candidates=candidates, package=package, unmet=unmet,
         eta_models={e.eta.model_version for e in evaluated if e.eta}, units_evaluated=len(evaluated),
@@ -323,7 +323,51 @@ def package_for(chosen: list[_Evaluated], mandatory: list[CapabilityRequirement]
     ), unmet
 
 
-def _to_candidate(e: _Evaluated, rank: int | None, requirements, mandatory) -> Candidate:
+def _duration(seconds: int) -> str:
+    m, s = divmod(abs(seconds), 60)
+    return f"{m}m {s:02d}s" if m else f"{s}s"
+
+
+def _comparison(e: _Evaluated, rank: int, eligible: list[_Evaluated], mandatory) -> RankingFactor:
+    """Why this unit sits where it does, stated against #2 (for the top unit) or #1 (for everyone else).
+
+    Mirrors the sort key in evaluate(): ETA, then keeping station cover, then call sign."""
+    value = f"#{rank} of {len(eligible)} eligible"
+    if len(eligible) == 1:
+        return RankingFactor(factor="comparison", value=value, note="Only eligible unit for this incident.")
+    ref_rank = 2 if rank == 1 else 1
+    ref = eligible[ref_rank - 1]
+    ref_label = f"#{ref_rank} {ref.view.unit.callSign}"
+    delta = ref.eta.seconds - e.eta.seconds
+    notes: list[str] = []
+    if delta > 0:
+        notes.append(f"Arrives {_duration(delta)} before {ref_label}.")
+    elif delta < 0:
+        notes.append(f"Arrives {_duration(delta)} after {ref_label}.")
+    elif e.leaves_station_empty != ref.leaves_station_empty:
+        if rank == 1:
+            notes.append(f"Same ETA as {ref_label}; ranked first because {ref.view.unit.callSign} would leave its station empty.")
+        else:
+            notes.append(f"Same ETA as {ref_label}; ranked below it because this unit would leave its station empty.")
+    else:
+        notes.append(f"Same ETA and station cover as {ref_label}; order is by call sign.")
+
+    # Coverage trade-off the ETA ordering hides: the faster unit strips its station, the slower one does not.
+    keeper, stripper = (ref, e) if rank == 1 else (e, ref)
+    if delta and stripper.leaves_station_empty and not keeper.leaves_station_empty:
+        station = keeper.view.station.name if keeper.view.station else "its station"
+        if rank == 1:
+            notes.append(f"Choosing {ref.view.unit.callSign} instead costs {_duration(delta)} but keeps cover at {station}.")
+        else:
+            notes.append(f"Unlike {ref_label}, keeps cover at {station}.")
+
+    extras = [r.capabilityId for r in mandatory if e.provides(r.capabilityId) and not ref.provides(r.capabilityId)]
+    if extras:
+        notes.append(f"Provides {', '.join(extras)}, which {ref_label} does not.")
+    return RankingFactor(factor="comparison", value=value, note=" ".join(notes))
+
+
+def _to_candidate(e: _Evaluated, rank: int | None, requirements, mandatory, eligible: list[_Evaluated]) -> Candidate:
     unit = e.view.unit
     checks = []
     for r in requirements:
@@ -339,6 +383,7 @@ def _to_candidate(e: _Evaluated, rank: int | None, requirements, mandatory) -> C
         met = [r.capabilityId for r in mandatory if e.provides(r.capabilityId)]
         gaps = [f"{r.capabilityId} ({e.raw[r.capabilityId].state.value})" for r in mandatory if not e.provides(r.capabilityId)]
         factors = [
+            _comparison(e, rank, eligible, mandatory),
             RankingFactor(factor="eta", value=f"{e.eta.seconds} s", note=f"Method: {e.eta.method.value} ({e.eta.model_version})."),
             RankingFactor(
                 factor="mandatory_requirements_provided", value=f"{len(met)} of {len(mandatory)}",
