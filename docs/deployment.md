@@ -35,7 +35,7 @@ flowchart LR
 
 | Service | Image | Published | Notes |
 |---|---|---|---|
-| `web` | `dispatchz-web:<commit>` (nginx on Alpine, the UI baked in) | `0.0.0.0:80` | The only public port. Blocks `/api/v1/admin/*`, streams the event stream unbuffered |
+| `web` | `dispatchz-web:<commit>` (nginx on Alpine, the UI baked in) | `0.0.0.0:80` | The only public port. Blocks `/api/v1/admin/*` except the demo reset, streams the event stream unbuffered |
 | `api` | `dispatchz-api:<commit>` (IBM ML base image plus our packages) | `127.0.0.1:8000` | Reachable by the web service over the Compose network; on the host only through the VM's loopback |
 
 There is no database service. The API's default store is in memory, which is the configuration that has been deployed and verified on
@@ -188,9 +188,13 @@ run summary is the proof that a browser elsewhere can connect; a warning there m
 - **This is a demo, not a hardened service.** Traffic is unencrypted HTTP, and the API's bearer tokens are fixed demo strings; the
   dispatcher token is shipped inside the UI's JavaScript, so anyone who can reach the page can use the application and see its
   (synthetic) data. Do not put real data in it.
-- The operator endpoint `POST /api/v1/admin/demo/reset` is **blocked at the proxy** (403), so the public cannot reset the demo even
-  with the well-known admin token. Operators reach it directly through the API's loopback port over an SSH tunnel
-  (`ssh -L 8000:localhost:8000 ...`, then `http://localhost:8000`).
+- **Demo reset.** `POST /api/v1/admin/demo/reset` restores the seed data and is the one operator endpoint the proxy lets through (POST
+  only; every other `/api/v1/admin/*` path is still a 403 at the proxy). It needs the `system_admin` token, which, like the dispatcher
+  token, is a well-known demo string shipped in the UI's JavaScript, so **anyone who can reach the site can reset the demo for
+  everybody**. That is the price of a reset button on a public demo. The button is hidden unless a tab is opened with `?demo=1`, and
+  it asks for confirmation. To switch the reset off entirely (for example after judging), set `DEMO_MODE=false` in `~/dispatchz/.env`
+  and redeploy: the endpoint then answers 403 and the button shows that. Operators can also reach it directly through the API's
+  loopback port over an SSH tunnel (`ssh -L 8000:localhost:8000 ...`, then `http://localhost:8000`).
 - The API container is not published beyond the VM's loopback, and there is no database to expose.
 - To restrict who can open the demo, the simplest controls are the VM or cloud firewall (allow only your addresses) or binding to
   loopback (`WEB_BIND=127.0.0.1`) and using SSH tunnels only. HTTPS needs a domain name and a certificate (for example a Caddy or

@@ -11,6 +11,23 @@ export const api = createClient<paths>({
   headers: { Authorization: `Bearer ${DEMO_TOKEN}` }
 });
 
+// Demo only. POST /api/v1/admin/demo/reset is allowed for the system_admin role, which the dispatcher token above lacks.
+const DEMO_ADMIN_TOKEN: string = import.meta.env.VITE_DEMO_ADMIN_TOKEN ?? 'demo-admin';
+
+/** Restore the server's deterministic seed data (needs DEMO_MODE=true on the server). Never throws. */
+export async function resetDemoData(): Promise<{ ok: boolean; text: string }> {
+  try {
+    const { response, error } = await api.POST('/api/v1/admin/demo/reset', {
+      headers: { Authorization: `Bearer ${DEMO_ADMIN_TOKEN}` }
+    });
+    if (response.ok) return { ok: true, text: 'Demo data restored to the seed.' };
+    if (response.status === 403) return { ok: false, text: 'Reset is disabled on this server (not in demo mode).' };
+    return { ok: false, text: errorText(error) };
+  } catch (e) {
+    return { ok: false, text: errorText(e) };
+  }
+}
+
 /**
  * A random UUID v4. `crypto.randomUUID` exists only in secure contexts (HTTPS or localhost), and the demo is served over plain
  * HTTP from the VM's address, where it is undefined. The pages create their first key while initializing, so calling it directly

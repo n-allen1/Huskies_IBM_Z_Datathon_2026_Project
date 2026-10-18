@@ -137,6 +137,14 @@ Manual deploy from your machine (needs Docker with buildx locally): `bash script
 VM (web on port 8001, localhost only, reachable through an SSH tunnel) and never touches the shared one. See
 [docs/deployment.md](docs/deployment.md).
 
+### Demo controls
+
+For rehearsing and recording the demo there is a **DEMO · Reset data** button. It is hidden from normal visitors: open the app with
+`?demo=1` (for example `http://<vm-ip>/dispatch?demo=1`; the tab remembers it, `?demo=0` hides it again). It asks for confirmation, then
+discards every incident, recommendation, decision and unit status change and restores the seed data, including the seeded demo incidents, for
+everyone viewing the demo. It calls the contract's `POST /api/v1/admin/demo/reset` (the API's `DEMO_MODE` must be true, as it is in the
+stack). Anyone who can reach the site can use it, so switch it off after judging by setting `DEMO_MODE=false` ([docs/deployment.md](docs/deployment.md#security-notes-for-the-public-listener)).
+
 ### Configuration
 
 No secrets are needed to run the stack today (the store is in memory and the bearer tokens are fixed demo tokens). Nothing secret is
