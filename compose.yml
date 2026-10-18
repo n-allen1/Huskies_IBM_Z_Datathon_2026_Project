@@ -15,6 +15,8 @@ services:
     restart: unless-stopped
     environment:
       DEMO_MODE: ${DEMO_MODE:-true}
+      # Synthetic incidents (backend/app/demo_incidents.json), re-seeded on every start and demo reset.
+      SEED_INCIDENTS: ${SEED_INCIDENTS:-true}
     # Published on the host's loopback only, for operators (SSH tunnel, the deploy health check). Browsers reach the API
     # through the web service. Nothing else listens: the API is not on a public port.
     ports:

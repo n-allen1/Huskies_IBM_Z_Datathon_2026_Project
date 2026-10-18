@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 from uuid import UUID, uuid4
 
-from . import eligibility, multi_incident, protocol
+from . import demo_incidents, eligibility, multi_incident, protocol
 from .config import Settings
 from .errors import ApiError
 from .events import EventBus
@@ -544,6 +544,8 @@ class Services:
         with self.dispatch_lock:
             counts = self.store.reset()
             self.idempotency.clear()
+            if self.settings.seed_incidents:
+                demo_incidents.seed(self)
             self.events.reset()  # connected clients are told to refetch
             self._audit(user, "demo.reset", "system", None, seedVersion=self.store.seed_version)
         return counts

@@ -1,0 +1,184 @@
+[
+  {
+    "narrative": "Smoke and flames coming from the roof of a commercial building, employees say everyone got out.",
+    "category": "structure_fire",
+    "priority": "P1",
+    "location": {
+      "address": "2525 Northwest Topeka Boulevard, Topeka, KS",
+      "point": {
+        "lat": 39.0930825,
+        "lon": -95.6657007
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Man collapsed at his desk, not breathing, a coworker is starting CPR.",
+    "category": "medical_cardiac",
+    "priority": "P1",
+    "location": {
+      "address": "110 Northeast Lyman Road, Topeka, KS",
+      "point": {
+        "lat": 39.0879918,
+        "lon": -95.6596893
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Two-car collision on the street out front, one driver trapped and the car is leaking fluid.",
+    "category": "traffic_collision",
+    "priority": "P1",
+    "location": {
+      "address": "1900 Northwest Topeka Boulevard, Topeka, KS",
+      "point": {
+        "lat": 39.0824623,
+        "lon": -95.6659377
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Strong chemical smell at the warehouse loading dock, two workers dizzy and coughing.",
+    "category": "hazmat",
+    "priority": "P1",
+    "location": {
+      "address": "2720 Northeast Grantville Road, Topeka, KS",
+      "point": {
+        "lat": 39.0899618,
+        "lon": -95.6335593
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Grass fire spreading across the field behind the building toward a line of trees, wind is picking up.",
+    "category": "wildland_fire",
+    "priority": "P2",
+    "location": {
+      "address": "4055 Northwest Green Hills Road, Topeka, KS",
+      "point": {
+        "lat": 39.1199233,
+        "lon": -95.6878333
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Pickup truck engine on fire in the parking lot, no one inside.",
+    "category": "vehicle_fire",
+    "priority": "P2",
+    "location": {
+      "address": "2240 Northwest Tyler Street, Topeka, KS",
+      "point": {
+        "lat": 39.0897068,
+        "lon": -95.671377
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Worker fell from a ladder about ten feet, conscious but bleeding from the head and can't move his leg.",
+    "category": "medical_trauma",
+    "priority": "P2",
+    "location": {
+      "address": "2201 Northeast Grantville Road, Topeka, KS",
+      "point": {
+        "lat": 39.0879144,
+        "lon": -95.643272
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Construction worker stuck in a collapsed trench beside the building, partially buried up to his waist.",
+    "category": "technical_rescue",
+    "priority": "P1",
+    "location": {
+      "address": "1741 Northeast 46th Street, Topeka, KS",
+      "point": {
+        "lat": 39.1282498,
+        "lon": -95.6199597
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Couple screaming at each other in the parking lot, man shoved the woman against a car.",
+    "category": "domestic_disturbance",
+    "priority": "P2",
+    "location": {
+      "address": "2633 North Kansas Avenue, Topeka, KS",
+      "point": {
+        "lat": 39.0945395,
+        "lon": -95.6604522
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Business owner arrived to find the side door pried open and tools missing, suspect may still be nearby.",
+    "category": "burglary",
+    "priority": "P3",
+    "location": {
+      "address": "2406 Northwest Clay Street, Topeka, KS",
+      "point": {
+        "lat": 39.094181,
+        "lon": -95.6793529
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Driver slumped over in a parked car for over an hour, not responding to knocks on the window.",
+    "category": "welfare_check",
+    "priority": "P3",
+    "location": {
+      "address": "3617 Northwest 46th Street, Topeka, KS",
+      "point": {
+        "lat": 39.1283701,
+        "lon": -95.7181348
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Diabetic teenager confused and sweating in a store, mother says his blood sugar is very low.",
+    "category": "medical_other",
+    "priority": "P2",
+    "location": {
+      "address": "2050 Northwest Topeka Boulevard, Topeka, KS",
+      "point": {
+        "lat": 39.0862537,
+        "lon": -95.6627323
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Man punched and knocked to the ground outside the business, assailant left on foot heading north.",
+    "category": "assault",
+    "priority": "P2",
+    "location": {
+      "address": "2125 North Kansas Avenue, Topeka, KS",
+      "point": {
+        "lat": 39.0892759,
+        "lon": -95.6606705
+      },
+      "geocodeConfidence": 0.9
+    }
+  },
+  {
+    "narrative": "Fire in the kitchen area of a commercial building, staff used an extinguisher but smoke is still spreading.",
+    "category": "structure_fire",
+    "priority": "P1",
+    "location": {
+      "address": "2600 Northeast Grantville Road, Topeka, KS",
+      "point": {
+        "lat": 39.0893101,
+        "lon": -95.6357661
+      },
+      "geocodeConfidence": 0.9
+    }
+  }
+]

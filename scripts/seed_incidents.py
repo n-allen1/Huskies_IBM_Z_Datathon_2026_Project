@@ -1,39 +1,35 @@
-"""Create a set of synthetic demo incidents around the stand-in stations through the running API.
+"""Regenerate backend/app/demo_incidents.json, the synthetic incidents the backend seeds in demo deployments.
 
-Run against a backend (default http://localhost:8000):
-    python scripts/seed_incidents.py [--base-url URL] [--suggest-only]
+    python scripts/seed_incidents.py
 
-Each incident goes through the normal intake path (POST /incidents, with its reported category), asks the backend
-to infer a category (mode=infer), then confirms the intended category as a human would (mode=confirm), so every
-incident ends up categorized and the output shows where the model disagreed. --suggest-only stops after inference,
-leaving the suggestion for a dispatcher to confirm.
+The backend loads that file itself whenever it starts with an empty store or its demo data is reset, when
+SEED_INCIDENTS=true (set in compose.yml), so the incidents survive deploys, restarts and resets without this script.
+Run it only after changing the list below, and commit the regenerated file.
 
 Locations are real street addresses of commercial, industrial and office buildings in North Topeka (never
-houses or apartments: the emergencies are made up). Each one is resolved at run time with Photon, the same
-OpenStreetMap geocoder the intake screen uses (frontend/src/lib/location/geocode.ts), and saved the way the intake
-screen saves it: the geocoder's point, "<address>, <region>" as the address, and the intake screen's heuristic
-precision tier as geocodeConfidence (0.9 for an address-level match; see TIER in frontend/src/lib/location/state.ts).
-An address that does not resolve to an address-level match within 25 km of Station 1 Central stops the script rather
-than being saved with a made-up confidence. Like the intake screen, this sends the addresses to photon.komoot.io.
-
-Only stdlib; the in-memory store forgets everything on restart, so re-run it after restarting the backend.
+houses or apartments: the emergencies are made up). Each one is resolved with Photon, the same OpenStreetMap
+geocoder the intake screen uses (frontend/src/lib/location/geocode.ts), and recorded the way the intake screen
+saves it: the geocoder's point, "<address>, <region>" as the address, and the intake screen's heuristic precision
+tier as geocodeConfidence (0.9 for an address-level match; see TIER in frontend/src/lib/location/state.ts). An
+address that does not resolve to an address-level match within 25 km of Station 1 Central stops the script rather
+than being saved with a made-up confidence. Like the intake screen, this sends the addresses to photon.komoot.io;
+the deployed backend never does.
 """
 
-import argparse
 import json
 import math
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
+from pathlib import Path
 
+OUT = Path(__file__).resolve().parent.parent / "backend" / "app" / "demo_incidents.json"
 CENTER = (39.100, -95.700)  # Station 1 Central in backend/app/seed_standin.py
 MAX_KM = 25.0
 REGION = "Topeka, KS"
 PHOTON = "https://photon.komoot.io"
 ADDRESS_TIER = 0.9  # TIER.address in frontend/src/lib/location/state.ts
-TOKEN = "demo-call-taker"
 
 # (narrative, street address, priority or None, intended category)
 INCIDENTS = [
@@ -100,58 +96,25 @@ def geocode(street: str) -> tuple[float, float]:
     return lat, lon
 
 
-def post(base: str, path: str, body: dict, idempotent: bool = False) -> dict:
-    headers = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
-    if idempotent:
-        headers["Idempotency-Key"] = str(uuid.uuid4())
-    req = urllib.request.Request(f"{base}/api/v1{path}", data=json.dumps(body).encode(), headers=headers, method="POST")
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read())
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--base-url", default="http://localhost:8000")
-    parser.add_argument("--suggest-only", action="store_true", help="leave the model's suggestion unconfirmed")
-    args = parser.parse_args()
-    base = args.base_url.rstrip("/")
-
-    # Resolve every address before creating anything, so a geocoder problem never leaves a partial set.
-    try:
-        points = [geocode(street) for _, street, _, _ in INCIDENTS]
-    except (LookupError, urllib.error.URLError) as exc:
-        print(f"geocoding failed: {exc}", file=sys.stderr)
-        return 1
-    for (_, street, _, _), (lat, lon) in zip(INCIDENTS, points):
-        if km_from_center(lat, lon) > MAX_KM:
-            print(f"refusing {street}: {km_from_center(lat, lon):.1f} km from Station 1 Central", file=sys.stderr)
-            return 1
-
-    for (narrative, street, priority, category), (lat, lon) in zip(INCIDENTS, points):
-        address = f"{street}, {REGION}"
-        body = {
-            "narrative": narrative, "reportedCategory": category, "isSynthetic": True,
-            "location": {"address": address, "point": {"lat": lat, "lon": lon}, "geocodeConfidence": ADDRESS_TIER},
-        }
-        if priority:
-            body["priority"] = priority
+    records = []
+    for narrative, street, priority, category in INCIDENTS:
         try:
-            inc = post(base, "/incidents", body, idempotent=True)
-            path = f"/incidents/{inc['incidentId']}/classifications"
-            suggested = post(base, path, {"mode": "infer"})
-            line = f"{inc['number']}  {km_from_center(lat, lon):4.1f} km  {address}  model: {suggested['category']}"
-            if not args.suggest_only:
-                confirm = {"mode": "confirm", "category": category, "inferredClassificationId": suggested["classificationId"]}
-                post(base, path, confirm)
-                line += f"  confirmed: {category}" + ("" if suggested["category"] == category else "  (corrected)")
-        except urllib.error.HTTPError as exc:
-            print(f"{address}: HTTP {exc.code} {exc.read().decode(errors='replace')[:300]}", file=sys.stderr)
+            lat, lon = geocode(street)
+        except (LookupError, urllib.error.URLError) as exc:
+            print(f"geocoding failed: {exc}", file=sys.stderr)
             return 1
-        except urllib.error.URLError as exc:
-            print(f"cannot reach {base}: {exc.reason}", file=sys.stderr)
+        dist = km_from_center(lat, lon)
+        if dist > MAX_KM:
+            print(f"refusing {street}: {dist:.1f} km from Station 1 Central", file=sys.stderr)
             return 1
-        print(line)
-    print(f"created {len(INCIDENTS)} synthetic incidents")
+        records.append({
+            "narrative": narrative, "category": category, "priority": priority,
+            "location": {"address": f"{street}, {REGION}", "point": {"lat": lat, "lon": lon}, "geocodeConfidence": ADDRESS_TIER},
+        })
+        print(f"{dist:4.1f} km  {street}  {category}")
+    OUT.write_text(json.dumps(records, indent=2) + "\n", encoding="utf-8")
+    print(f"wrote {len(records)} incidents to {OUT}")
     return 0
 
 
