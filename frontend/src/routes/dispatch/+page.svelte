@@ -12,6 +12,8 @@
   import IncidentMap from '$lib/components/IncidentMap.svelte';
   import PriorityBadge from '$lib/components/PriorityBadge.svelte';
   import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+  import LocationCorrectionDialog from '$lib/components/LocationCorrectionDialog.svelte';
+  import { describeConfidence } from '$lib/location/state';
 
   // ---------- data ----------
   let queue = $state<Incident[]>([]);
@@ -46,6 +48,7 @@
   let reviewDialog = $state(false);
   let oosTarget = $state<{ unitId: string; callSign: string } | null>(null);
   let oosDialog = $state(false);
+  let locationDialog = $state(false);
 
   // queue view state
   type Sort = 'priority' | 'oldest' | 'newest';
@@ -635,17 +638,30 @@
           <button class="btn btn-ghost btn-sm" aria-label="Close details" onclick={() => (selectedId = undefined)}>✕</button>
         </div>
         <p class="mt-2 text-sm">{selected.narrative}</p>
-        <p class="mt-1.5 text-xs text-muted">
-          <span class="text-fg">{selected.location.address ?? 'No address on record'}</span>
-          · {selected.location.point.lat.toFixed(4)}, {selected.location.point.lon.toFixed(4)}
-          · {label(selected.provenance.dataOrigin)} data
-        </p>
+        <p class="mt-1.5 text-xs text-muted">{label(selected.provenance.dataOrigin)} data</p>
       </div>
 
       <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {#if detailError}
           <p class="rounded-md border border-danger/60 bg-danger-soft p-2 text-sm" role="alert"><strong class="text-danger">✖</strong> {detailError}</p>
         {/if}
+
+        <section class="panel p-3" aria-labelledby="h-loc">
+          <div class="flex items-center gap-2">
+            <h3 id="h-loc" class="section-title">Location</h3>
+            <button class="btn btn-sm ml-auto" onclick={() => (locationDialog = true)}>Correct location…</button>
+          </div>
+          <p class="mt-1.5 text-sm">{selected.location.address ?? 'No address on record'}</p>
+          {#if selected.location.geocodeConfidence != null}
+            {@const conf = describeConfidence(selected.location.geocodeConfidence)}
+            <p class="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+              <span class="badge {conf.key === 'matched' ? 'border-ok/60 text-ok' : 'border-warn/60 text-warn'}">{conf.key === 'matched' ? '✔' : '◐'} {conf.label}</span>
+              {#if conf.key !== 'matched'}<span class="text-muted">Not an exact destination. Verify with the caller.</span>{/if}
+            </p>
+          {:else}
+            <p class="mt-1 text-xs"><span class="badge border-warn/60 text-warn">◐ Source not recorded</span> <span class="text-muted">Placed by hand or entered elsewhere. Verify with the caller.</span></p>
+          {/if}
+        </section>
 
         <section class="panel p-3" aria-labelledby="h-class">
           <h3 id="h-class" class="section-title">Classification</h3>
@@ -807,3 +823,16 @@
 <ConfirmDialog bind:open={oosDialog} title="Mark {oosTarget?.callSign} out of service?" confirmText="Mark out of service" danger busy={busy.startsWith('oos-')} onConfirm={markOutOfService}>
   <p>This is a simulated status change for unit <strong class="text-fg">{oosTarget?.callSign}</strong>. It will make the unit unavailable and can invalidate recommendations that include it.</p>
 </ConfirmDialog>
+
+{#if selected}
+  <LocationCorrectionDialog
+    bind:open={locationDialog}
+    incident={selected}
+    onSaved={(updated) => {
+      queue = queue.map((i) => (i.incidentId === updated.incidentId ? updated : i));
+      if (recommendation) staleReasons = [...staleReasons, 'Incident location was corrected'];
+      notify(true, `Location corrected for ${updated.number}.`);
+      void loadAll();
+    }}
+  />
+{/if}

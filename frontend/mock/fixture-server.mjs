@@ -137,6 +137,7 @@ const send = (res, status, body) => {
   res.end(JSON.stringify(body));
 };
 const fail = (res, status, code, message) => send(res, status, { code, message, requestId: uuid(), timestamp: iso() });
+const validPoint = (p) => p && typeof p.lat === 'number' && typeof p.lon === 'number' && Math.abs(p.lat) <= 90 && Math.abs(p.lon) <= 180;
 const list = (data) => ({ data, page: { nextCursor: null, limit: 100, totalEstimate: data.length } });
 
 http
@@ -156,6 +157,35 @@ http
         clients.add(res);
         res.on('close', () => clients.delete(res)); // res, not req: req 'close' fires once the request body is read
         return;
+      }
+      if (path === '/incidents' && req.method === 'POST') {
+        // Mirrors the contract: location.point is required, so an address alone is rejected.
+        const pt = body.location?.point;
+        if (!body.narrative || body.isSynthetic !== true) return fail(res, 400, 'validation_error', 'narrative and isSynthetic=true are required');
+        if (!validPoint(pt)) return fail(res, 400, 'validation_error', 'location.point (lat, lon) is required');
+        const n = incidents.length + 1;
+        const inc = {
+          incidentId: uuid(), number: `INC-2026-${String(100 + n).padStart(6, '0')}`, status: 'intake', priority: body.priority ?? 'unassigned',
+          priorityConfirmed: false, confirmedCategory: null, narrative: body.narrative, version: 1, callbackNumber: body.callbackNumber,
+          location: body.location, createdAt: iso(), updatedAt: iso(), provenance: { ...provenance(), dataOrigin: 'user_entered' }
+        };
+        incidents.push(inc);
+        emit('incident.created', 'incident', inc.incidentId);
+        return send(res, 201, inc);
+      }
+      if ((r = m(/^\/incidents\/([^/]+)$/)) && req.method === 'PATCH') {
+        const inc = incidents.find((i) => i.incidentId === r[1]);
+        if (!inc) return fail(res, 404, 'not_found', 'Incident not found');
+        if (body.version !== inc.version) return fail(res, 409, 'conflict', 'Incident was changed by someone else; reload and retry');
+        if (body.location) {
+          if (!validPoint(body.location.point)) return fail(res, 400, 'validation_error', 'location.point (lat, lon) is required');
+          inc.location = body.location;
+        }
+        for (const k of ['status', 'priority', 'priorityConfirmed', 'confirmedCategory', 'narrative', 'callbackNumber']) if (k in body) inc[k] = body[k];
+        inc.version++;
+        inc.updatedAt = iso();
+        emit('incident.updated', 'incident', inc.incidentId);
+        return send(res, 200, inc);
       }
       if (path === '/incidents' && req.method === 'GET') return send(res, 200, list(incidents));
       if (path === '/resources/units') return send(res, 200, list(units));

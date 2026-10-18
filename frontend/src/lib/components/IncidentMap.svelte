@@ -4,6 +4,8 @@
   import type { Facility, Incident, Unit } from '$lib/api/types';
   import type * as Leaflet from 'leaflet';
   import { label, priorityRank, waitMinutes } from '$lib/format';
+  import { BASEMAPS, WORLD, type BasemapKey } from '$lib/map/basemaps';
+  import { describeConfidence, isApproximate } from '$lib/location/state';
   import {
     AWAITING_DISPATCH, PRIORITY, UNIT_GROUP_META, esc, prioritySvg, unitGroup, type Priority
   } from '$lib/ops';
@@ -32,19 +34,9 @@
   } = $props();
 
   // ---------- basemaps ----------
-  // Real dark raster basemap, not a CSS filter. Labels are a separate overlay so they can be toggled and toned down.
-  // CARTO's free raster tiles now return an "API KEY REQUIRED" watermark, so every basemap here is keyless Esri.
-  const esri = (service: string) => `https://server.arcgisonline.com/ArcGIS/rest/services/${service}/MapServer/tile/{z}/{y}/{x}`;
-  const ESRI_ATTR = 'Tiles &copy; Esri and its data providers';
-  const BASEMAPS = {
-    night: { name: 'Night', base: esri('Canvas/World_Dark_Gray_Base'), labels: esri('Canvas/World_Dark_Gray_Reference'), attr: ESRI_ATTR, maxNative: 16 },
-    satellite: { name: 'Satellite', base: esri('World_Imagery'), labels: esri('Reference/World_Boundaries_and_Places'), attr: ESRI_ATTR, maxNative: 19 },
-    light: { name: 'Light', base: esri('Canvas/World_Light_Gray_Base'), labels: esri('Canvas/World_Light_Gray_Reference'), attr: ESRI_ATTR, maxNative: 16 }
-  } as const;
-  type BasemapKey = keyof typeof BASEMAPS;
+  // Basemaps live in $lib/map/basemaps (shared with the intake location map).
 
   const MIN_ZOOM_FLOOR = 3;
-  const WORLD: Leaflet.LatLngBoundsLiteral = [[-85.05, -180], [85.05, 180]];
   const PREFS_KEY = 'rm.map.v4';
   type Prefs = { basemap: BasemapKey; units: boolean; facilities: boolean; lines: boolean; labels: boolean };
   const DEFAULT_PREFS: Prefs = { basemap: 'night', units: true, facilities: true, lines: true, labels: true };
@@ -176,7 +168,7 @@
   function incidentTip(i: Incident): string {
     return `<b>${esc(i.number)}</b> · ${esc(i.priority === 'unassigned' ? 'no priority' : i.priority)}${i.priorityConfirmed ? '' : ' (unconfirmed)'}<br>` +
       `<span class="sub">${esc(label(i.status))} · ${esc(i.confirmedCategory ? label(i.confirmedCategory) : 'category unconfirmed')}</span><br>` +
-      `${esc(i.location.address ?? 'No address')}<br><span class="sub">${esc(wait(i))}</span>`;
+      `${esc(i.location.address ?? 'No address')}<br><span class="sub">Location: ${esc(describeConfidence(i.location.geocodeConfidence).label)}</span><br><span class="sub">${esc(wait(i))}</span>`;
   }
 
   function draw() {
@@ -247,7 +239,7 @@
       const open = AWAITING_DISPATCH.has(i.status);
       const size = isSel ? 30 : open ? 24 : 18;
       const text = `${i.number}, ${PRIORITY[i.priority].name}, ${label(i.status)}`;
-      const html = `<div class="rm-marker rm-inc${open || isSel ? '' : ' handled'}">${isSel ? '<span class="rm-ring"></span>' : ''}${prioritySvg(i.priority, size)}${isSel ? `<span class="rm-inc-tag">${esc(i.number)}</span>` : ''}</div>`;
+      const html = `<div class="rm-marker rm-inc${open || isSel ? '' : ' handled'}">${isSel ? '<span class="rm-ring"></span>' : ''}${isApproximate(i.location.geocodeConfidence) ? '<span class="rm-approx-ring"></span>' : ''}${prioritySvg(i.priority, size)}${isSel ? `<span class="rm-inc-tag">${esc(i.number)}</span>` : ''}</div>`;
       add(
         L.marker([lat, lon], {
           icon: divIcon(html, text),
@@ -408,6 +400,7 @@
           {/each}
         </ul>
         <p class="mt-2 text-muted">Faded = already dispatched or on scene.</p>
+        <p class="mt-1 flex items-center gap-1.5 text-muted"><span class="inline-block size-3.5 rounded-full border-2 border-dashed border-muted"></span>Dashed ring = approximate location.</p>
         <p class="section-title mt-3 mb-1.5">Units</p>
         <ul class="space-y-1">
           <li class="flex items-center gap-2"><span class="rm-unit [transform:none] available inline-flex rounded border px-1 text-[10px]"><span class="g">●</span>E1</span>Available</li>

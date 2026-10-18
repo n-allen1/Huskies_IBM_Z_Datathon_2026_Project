@@ -110,7 +110,8 @@
   .chip {
     @apply inline-flex min-h-7 items-center gap-1 rounded-md border border-line-strong bg-transparent px-2 text-xs font-semibold text-muted hover:bg-raised;
   }
-  .chip[aria-pressed='true'] {
+  .chip[aria-pressed='true'],
+  .chip[data-on='true'] {
     @apply border-accent bg-accent-soft text-fg;
   }
   .kbd {
@@ -280,4 +281,76 @@
 }
 .rm-tip .sub {
   color: var(--color-muted);
+}
+
+/* ---------------- Location entry map ---------------- */
+.rm-cand {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: var(--color-app);
+  border: 2px solid var(--color-accent);
+  color: var(--color-fg);
+  font: 700 12px/1 var(--font-sans);
+}
+.rm-cand:hover {
+  background: var(--color-accent-soft);
+}
+/* Matched by a geocoder: filled dot. Placed by hand: hollow crosshair. Approximate: dashed outer ring. */
+.rm-pin {
+  width: 22px;
+  height: 22px;
+}
+.rm-pin-dot {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  border: 2.5px solid var(--color-fg);
+  box-shadow: 0 0 0 2px var(--color-app);
+}
+.rm-pin.hand .rm-pin-dot {
+  background: var(--color-app);
+  border-radius: 3px;
+  border-color: var(--color-accent);
+  position: relative;
+}
+.rm-pin.hand .rm-pin-dot::before,
+.rm-pin.hand .rm-pin-dot::after {
+  content: '';
+  position: absolute;
+  background: var(--color-accent);
+}
+.rm-pin.hand .rm-pin-dot::before {
+  left: 50%;
+  top: -7px;
+  bottom: -7px;
+  width: 2px;
+  margin-left: -1px;
+}
+.rm-pin.hand .rm-pin-dot::after {
+  top: 50%;
+  left: -7px;
+  right: -7px;
+  height: 2px;
+  margin-top: -1px;
+}
+.rm-pin.approx::after {
+  content: '';
+  position: absolute;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 2px dashed var(--color-accent);
+  pointer-events: none;
+}
+/* Dispatch map: a dashed ring marks an incident whose position is approximate. */
+.rm-approx-ring {
+  position: absolute;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  border: 2px dashed var(--color-muted);
+  pointer-events: none;
 }
