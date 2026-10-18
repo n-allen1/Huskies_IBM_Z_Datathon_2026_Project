@@ -153,7 +153,7 @@ jobs:
       # s390x image cannot run on this x86 runner; the web image, nginx config and proxying are exactly what is deployed.
       - name: Start the stack
         run: |
-          export WEB_BIND=127.0.0.1 WEB_PORT=8080
+          export WEB_BIND=0.0.0.0 WEB_PORT=8080
           docker compose -f compose.yml -f compose.local.yml up -d --build --wait --wait-timeout 300
 
       - name: Check the app through the proxy
@@ -169,6 +169,22 @@ jobs:
           [ "$(code -H 'Authorization: Bearer demo-dispatcher' "$base/api/v1/resources/units?limit=1")" = 200 ]
           # Operator endpoints are not reachable through the public listener, even with an admin token.
           [ "$(code -X POST -H 'Authorization: Bearer demo-admin' "$base/api/v1/admin/demo/reset")" = 403 ]
+
+      - name: The UI renders over plain HTTP on a non-loopback address
+        # Browsers expose some APIs (crypto.randomUUID, for one) only in secure contexts: HTTPS or localhost. The VM is served over
+        # plain HTTP from its IP address, so a page that uses one while initializing is blank there but fine on localhost and in
+        # unit tests. Chrome treats this runner's own address the same way, so render the pages through it.
+        run: |
+          ip="$(hostname -I | awk '{print $1}')"
+          for page in dispatch intake; do
+            timeout 120 google-chrome --headless=new --no-sandbox --disable-gpu --virtual-time-budget=15000               --enable-logging=stderr --v=0 --dump-dom "http://${ip}:8080/${page}" > "dom_${page}.html" 2> "chrome_${page}.log" || true
+            if ! grep -q '<header' "dom_${page}.html" || grep -q 'Uncaught' "chrome_${page}.log"; then
+              echo "::error::/${page} did not render over plain HTTP on a non-loopback address."
+              grep CONSOLE "chrome_${page}.log" | head -5
+              exit 1
+            fi
+            echo "/${page} rendered"
+          done
 
       - name: The proxy follows a recreated API container
         # Every deploy recreates the API container with a new address; nginx must not keep the old one.
