@@ -18,7 +18,7 @@
     "openapi-fetch": "^0.13.4"
   },
   "devDependencies": {
-    "@sveltejs/adapter-static": "^3.0.8",
+    "@sveltejs/adapter-static": "^4.0.0",
     "@sveltejs/kit": "^2.20.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@tailwindcss/vite": "^4.0.0",
