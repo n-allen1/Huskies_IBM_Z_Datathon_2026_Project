@@ -10,6 +10,7 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "mock:fixtures": "node mock/fixture-server.mjs",
+    "mock:seed": "node mock/fixture-server.mjs --seed",
     "gen:types": "openapi-typescript ../contracts/openapi.json -o src/lib/api/schema.d.ts"
   },
   "dependencies": {

@@ -127,13 +127,18 @@
   background: #0d1520;
   font-family: var(--font-sans);
 }
-.rm-map .leaflet-control-attribution {
-  background: rgb(11 17 27 / 0.75);
-  color: var(--color-faint);
-  font-size: 10px;
-}
-.rm-map .leaflet-control-attribution a {
+/* Leaflet's own rule has the same specificity and can load later, so this one is deliberately more specific.
+   Map credits are a license requirement: they must stay legible on every basemap. */
+div.leaflet-container .leaflet-control-attribution {
+  background: rgb(11 17 27 / 0.82);
   color: var(--color-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+div.leaflet-container .leaflet-control-attribution a {
+  color: var(--color-fg);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .rm-labels-pane {
   opacity: 0.75;
@@ -142,7 +147,8 @@
 
 .rm-marker {
   position: absolute;
-  transform: translate(-50%, -50%);
+  /* --dx is set by the map when icons overlap: the icon moves sideways, its map point does not. */
+  transform: translate(calc(-50% + var(--dx, 0px)), -50%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -181,11 +187,11 @@
   overflow: visible;
 }
 .rm-inc-tag {
+  /* Above the icon, not beside it: a label to the side would cover a unit that was moved next to its incident. */
   position: absolute;
-  left: 100%;
-  top: 50%;
-  transform: translateY(-50%);
-  margin-left: 8px;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  transform: translateX(-50%);
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--color-app);
@@ -196,8 +202,9 @@
   pointer-events: none;
 }
 .rm-unit {
-  /* Sits just below its point so a unit parked at an incident does not hide the incident symbol. */
-  transform: translate(-50%, 6px);
+  /* Centered on its map point like every marker; the map moves it sideways if it overlaps another icon. */
+  box-sizing: border-box;
+  height: 22px;
   gap: 4px;
   padding: 1px 6px 1px 4px;
   border-radius: 5px;
@@ -206,6 +213,10 @@
   color: var(--color-fg);
   font: 600 11px/1.5 var(--font-sans);
   white-space: nowrap;
+}
+.rm-unit.rm-unit-sample {
+  transform: none;
+  height: auto;
 }
 .rm-unit .g {
   font-size: 10px;

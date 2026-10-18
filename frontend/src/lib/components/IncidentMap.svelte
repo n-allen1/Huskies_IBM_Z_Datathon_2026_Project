@@ -6,6 +6,7 @@
   import { label, priorityRank, waitMinutes } from '$lib/format';
   import { BASEMAPS, WORLD, type BasemapKey } from '$lib/map/basemaps';
   import { describeConfidence, isApproximate } from '$lib/location/state';
+  import { declutter } from '$lib/map/declutter';
   import {
     AWAITING_DISPATCH, PRIORITY, UNIT_GROUP_META, esc, prioritySvg, unitGroup, type Priority
   } from '$lib/ops';
@@ -87,7 +88,7 @@
     const count = (ok: boolean) => () => (ok ? tileOk++ : tileErrors++);
     baseLayer.on('tileload', count(true)).on('tileerror', count(false));
     if (b.labels && prefs.labels) {
-      labelLayer = L.tileLayer(b.labels, { ...common, pane: 'rmLabels', attribution: '' }).addTo(map);
+      labelLayer = L.tileLayer(b.labels, { ...common, pane: 'rmLabels', attribution: b.labelsAttr }).addTo(map);
     } else labelLayer = undefined;
   }
 
@@ -138,6 +139,13 @@
 
   // ---------- drawing ----------
   const CLUSTER_BELOW_ZOOM = 15;
+  /** Empty pixels kept between two icons that had to be separated (also clears the candidate halo around eligible units). */
+  const ICON_GAP_PX = 6;
+  /**
+   * Furthest an icon may be moved from its true position, in pixels. Pixels mean more ground at low zoom (about 19 m per
+   * pixel at the default city view), so the cap stays small: dense crowds are left to clustering and to zooming in.
+   */
+  const MAX_ICON_SHIFT_PX = 64;
   const FIT_MAX_ZOOM = 13;
 
   /** Greedy pixel-grid clustering: stable under panning because it works in layer coordinates. */
@@ -176,16 +184,24 @@
     layer.clearLayers();
     const add = (m: Leaflet.Layer) => m.addTo(layer!);
     const hi = new Set(highlightUnitIds);
+    // Every icon, with its tooltip's resting offset, so overlapping ones can be moved apart once they are in the DOM.
+    const placed: { id: string; marker: Leaflet.Marker; tipY: number }[] = [];
+    const place = (id: string, marker: Leaflet.Marker, tipY: number) => {
+      placed.push({ id, marker, tipY });
+      add(marker);
+    };
 
     if (prefs.facilities) {
       for (const f of facilities) {
         const g = f.type === 'hospital' ? 'H' : f.type === 'eoc' ? 'E' : 'S';
         const name = `${f.name} (${label(f.type)})`;
-        add(
+        place(
+          `f:${f.facilityId}`,
           L.marker([f.location.lat, f.location.lon], {
             icon: divIcon(`<div class="rm-marker rm-facility" aria-hidden="true">${g}</div>`, name),
             zIndexOffset: -500, title: name, alt: name, keyboard: false
-          }).bindTooltip(`<b>${esc(f.name)}</b><br><span class="sub">${esc(label(f.type))}</span>`, { className: 'rm-tip', direction: 'top', offset: [0, -8] })
+          }).bindTooltip(`<b>${esc(f.name)}</b><br><span class="sub">${esc(label(f.type))}</span>`, { className: 'rm-tip', direction: 'top', offset: [0, -8] }),
+          -8
         );
       }
     }
@@ -197,38 +213,31 @@
         const grp = unitGroup(u.status);
         const cand = hi.has(u.unitId);
         const text = `${u.callSign} – ${UNIT_GROUP_META[grp].text}, ${label(u.status)}`;
-        add(
+        place(
+          `u:${u.unitId}`,
           L.marker([lat, lon], {
             icon: divIcon(`<div class="rm-marker rm-unit ${grp}${cand ? ' candidate' : ''}"><span class="g" aria-hidden="true">${UNIT_GROUP_META[grp].glyph}</span>${esc(u.callSign)}</div>`, text),
             zIndexOffset: cand ? 600 : 0, title: text, alt: text, keyboard: false
           }).bindTooltip(
             `<b>${esc(u.callSign)}</b> · ${esc(u.unitType ?? u.discipline)}<br><span class="sub">${esc(UNIT_GROUP_META[grp].text)} (${esc(label(u.status))})${cand ? ' · eligible for selected incident' : ''}<br>Simulated position</span>`,
             { className: 'rm-tip', direction: 'top', offset: [0, -10] }
-          )
+          ),
+          -10
         );
       }
-      for (const g of groups) {
+      for (const [gi, g] of groups.entries()) {
         const c = L.latLng(g.reduce((s, p) => s + p.lat, 0) / g.length, g.reduce((s, p) => s + p.lon, 0) / g.length);
         const names = g.map((p) => p.u.callSign).join(', ');
-        add(
+        place(
+          `cu:${gi}`,
           L.marker(c, {
             icon: divIcon(`<div class="rm-marker rm-cluster units">${g.length}u</div>`, `${g.length} units`),
             zIndexOffset: -100, title: `${g.length} units: ${names}`, alt: `${g.length} units`, keyboard: false
           })
             .bindTooltip(`<b>${g.length} units</b><br><span class="sub">${esc(names)}</span><br><span class="sub">Zoom in to separate</span>`, { className: 'rm-tip', direction: 'top', offset: [0, -10] })
-            .on('click', () => zoomTo(g.map((p) => [p.lat, p.lon] as [number, number])))
+            .on('click', () => zoomTo(g.map((p) => [p.lat, p.lon] as [number, number]))),
+          -10
         );
-      }
-    }
-
-    // Dispatch lines: straight lines only. The contract carries no road routes, so they are labeled as such in the legend.
-    const sel = incidents.find((i) => i.incidentId === selectedId);
-    if (sel && prefs.lines) {
-      const from: [number, number] = [sel.location.point.lat, sel.location.point.lon];
-      for (const uid of routeUnitIds) {
-        const u = units.find((x) => x.unitId === uid);
-        if (!u?.location) continue;
-        add(L.polyline([from, [u.location.lat, u.location.lon]], { color: '#4da8d8', weight: 2.5, dashArray: '2 7', lineCap: 'round', opacity: 0.95, interactive: false }));
       }
     }
 
@@ -240,17 +249,19 @@
       const size = isSel ? 30 : open ? 24 : 18;
       const text = `${i.number}, ${PRIORITY[i.priority].name}, ${label(i.status)}`;
       const html = `<div class="rm-marker rm-inc${open || isSel ? '' : ' handled'}">${isSel ? '<span class="rm-ring"></span>' : ''}${isApproximate(i.location.geocodeConfidence) ? '<span class="rm-approx-ring"></span>' : ''}${prioritySvg(i.priority, size)}${isSel ? `<span class="rm-inc-tag">${esc(i.number)}</span>` : ''}</div>`;
-      add(
+      place(
+        `i:${i.incidentId}`,
         L.marker([lat, lon], {
           icon: divIcon(html, text),
           zIndexOffset: isSel ? 5000 : (5 - (priorityRank[i.priority] ?? 5)) * 100 + (open ? 50 : 0),
           title: text, alt: text, keyboard: true
         })
           .bindTooltip(incidentTip(i), { className: 'rm-tip', direction: 'top', offset: [0, -size / 2 - 2] })
-          .on('click', () => onSelect?.(i.incidentId))
+          .on('click', () => onSelect?.(i.incidentId)),
+        -size / 2 - 2
       );
     }
-    for (const g of groups) {
+    for (const [gi, g] of groups.entries()) {
       const c = L.latLng(g.reduce((s, p) => s + p.lat, 0) / g.length, g.reduce((s, p) => s + p.lon, 0) / g.length);
       const top = g.reduce<Priority>((m, p) => ((priorityRank[p.i.priority] ?? 9) < (priorityRank[m] ?? 9) ? p.i.priority : m), 'unassigned');
       const mix = (['P1', 'P2', 'P3', 'P4', 'unassigned'] as Priority[])
@@ -258,15 +269,57 @@
         .filter(([, n]) => n)
         .map(([p, n]) => `${n}× ${p === 'unassigned' ? 'no priority' : p}`)
         .join(', ');
-      add(
+      place(
+        `ci:${gi}`,
         L.marker(c, {
           icon: divIcon(`<div class="rm-marker rm-cluster" style="border-color:${PRIORITY[top].color}">${g.length}<span class="rm-cluster-top">${prioritySvg(top, 15)}</span></div>`, mix),
           zIndexOffset: (5 - (priorityRank[top] ?? 5)) * 100 + 20,
           title: `${g.length} incidents: ${mix}`, alt: `${g.length} incidents`, keyboard: true
         })
           .bindTooltip(`<b>${g.length} incidents</b><br><span class="sub">${esc(mix)}<br>Click to zoom in</span>`, { className: 'rm-tip', direction: 'top', offset: [0, -16] })
-          .on('click', () => zoomTo(g.map((p) => [p.lat, p.lon] as [number, number])))
+          .on('click', () => zoomTo(g.map((p) => [p.lat, p.lon] as [number, number]))),
+        -16
       );
+    }
+
+    // Icons that overlap are moved apart horizontally (the left one left, the right one right) just enough to be
+    // fully visible. Positions are computed in screen pixels, so this is redone on every zoom.
+    const shift = new Map<string, number>();
+    if (placed.length > 1) {
+      const boxes = placed.map((p) => {
+        const inner = p.marker.getElement()?.firstElementChild as HTMLElement | null;
+        const at = map!.latLngToLayerPoint(p.marker.getLatLng());
+        // The selection ring and the approximate-position ring are part of the icon: neighbors must clear them too.
+        const rings = inner ? [...inner.querySelectorAll<HTMLElement>('.rm-ring, .rm-approx-ring')].map((r) => r.offsetWidth) : [];
+        const size = Math.max(inner?.offsetWidth || 24, ...rings);
+        return { id: p.id, cx: at.x, cy: at.y, w: size, h: Math.max(inner?.offsetHeight || 24, ...rings) };
+      });
+      for (const [id, d] of declutter(boxes, { gap: ICON_GAP_PX, maxShift: MAX_ICON_SHIFT_PX })) shift.set(id, d);
+      for (const p of placed) {
+        const d = shift.get(p.id) ?? 0;
+        if (!d) continue;
+        (p.marker.getElement()?.firstElementChild as HTMLElement | null)?.style.setProperty('--dx', `${d}px`);
+        const tip = p.marker.getTooltip();
+        if (tip) tip.options.offset = L.point(d, p.tipY); // keep the hover card above the icon that was moved
+      }
+    }
+    /** A map point moved sideways by the same number of pixels as its icon. */
+    const shifted = (latlng: Leaflet.LatLngExpression, id: string): Leaflet.LatLng => {
+      const at = map!.latLngToLayerPoint(latlng);
+      return map!.layerPointToLatLng(L.point(at.x + (shift.get(id) ?? 0), at.y));
+    };
+
+    // Dispatch lines: straight lines only. The contract carries no road routes, so they are labeled as such in the legend.
+    // They join the icons where they are drawn (centers), so they follow any sideways move.
+    const sel = incidents.find((i) => i.incidentId === selectedId);
+    if (sel && prefs.lines) {
+      const from = shifted([sel.location.point.lat, sel.location.point.lon], `i:${sel.incidentId}`);
+      for (const uid of routeUnitIds) {
+        const u = units.find((x) => x.unitId === uid);
+        if (!u?.location) continue;
+        const to = shifted([u.location.lat, u.location.lon], `u:${uid}`);
+        add(L.polyline([from, to], { color: '#4da8d8', weight: 2.5, dashArray: '2 7', lineCap: 'round', opacity: 0.95, interactive: false }));
+      }
     }
 
     // First data frame: fit to everything once, then never move the view on redraws.
@@ -403,11 +456,11 @@
         <p class="mt-1 flex items-center gap-1.5 text-muted"><span class="inline-block size-3.5 rounded-full border-2 border-dashed border-muted"></span>Dashed ring = approximate location.</p>
         <p class="section-title mt-3 mb-1.5">Units</p>
         <ul class="space-y-1">
-          <li class="flex items-center gap-2"><span class="rm-unit [transform:none] available inline-flex rounded border px-1 text-[10px]"><span class="g">●</span>E1</span>Available</li>
-          <li class="flex items-center gap-2"><span class="rm-unit [transform:none] assigned inline-flex rounded border px-1 text-[10px]"><span class="g">▶</span>E2</span>Assigned (dispatched, en route, on scene)</li>
-          <li class="flex items-center gap-2"><span class="rm-unit [transform:none] returning inline-flex rounded border px-1 text-[10px]"><span class="g">↩</span>E3</span>Returning</li>
-          <li class="flex items-center gap-2"><span class="rm-unit [transform:none] unavailable inline-flex rounded border px-1 text-[10px]"><span class="g">✕</span>E4</span>Out of service / off duty</li>
-          <li class="flex items-center gap-2"><span class="rm-unit [transform:none] available candidate inline-flex rounded border px-1 text-[10px]"><span class="g">●</span>E5</span>Eligible for selected incident</li>
+          <li class="flex items-center gap-2"><span class="rm-unit rm-unit-sample available inline-flex rounded border px-1 text-[10px]"><span class="g">●</span>E1</span>Available</li>
+          <li class="flex items-center gap-2"><span class="rm-unit rm-unit-sample assigned inline-flex rounded border px-1 text-[10px]"><span class="g">▶</span>E2</span>Assigned (dispatched, en route, on scene)</li>
+          <li class="flex items-center gap-2"><span class="rm-unit rm-unit-sample returning inline-flex rounded border px-1 text-[10px]"><span class="g">↩</span>E3</span>Returning</li>
+          <li class="flex items-center gap-2"><span class="rm-unit rm-unit-sample unavailable inline-flex rounded border px-1 text-[10px]"><span class="g">✕</span>E4</span>Out of service / off duty</li>
+          <li class="flex items-center gap-2"><span class="rm-unit rm-unit-sample available candidate inline-flex rounded border px-1 text-[10px]"><span class="g">●</span>E5</span>Eligible for selected incident</li>
         </ul>
         <p class="mt-3 text-muted">Dashed lines join the selected incident to ticked units. They are straight lines, not road routes. Unit positions are simulated.</p>
       </div>

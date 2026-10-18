@@ -52,7 +52,7 @@
       const b = BASEMAPS.night;
       const common = { noWrap: true, bounds: WORLD, maxZoom: 19, maxNativeZoom: b.maxNative, crossOrigin: true } as const;
       L.tileLayer(b.base, { ...common, attribution: b.attr }).addTo(map);
-      L.tileLayer(b.labels, { ...common, pane: 'rmLabels' }).addTo(map);
+      L.tileLayer(b.labels, { ...common, pane: 'rmLabels', attribution: b.labelsAttr }).addTo(map);
       layer = L.layerGroup().addTo(map);
       map.on('click', (e: Leaflet.LeafletMouseEvent) => {
         if (placeOnClick && !readonly) onPlace?.(e.latlng.lat, e.latlng.lng);

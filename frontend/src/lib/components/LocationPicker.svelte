@@ -245,6 +245,14 @@
     {#if point}
       <button type="button" class="btn btn-ghost btn-sm" onclick={() => (value = clearPoint(value))}>Clear location</button>
     {/if}
+
+    {#if value.method === 'address' || value.method === 'landmark'}
+      <!-- Required credit for the OpenStreetMap data behind the address search. -->
+      <p class="text-[0.7rem] text-faint">
+        Address search by <a class="underline" href="https://photon.komoot.io" target="_blank" rel="noopener noreferrer">Photon</a>,
+        data &copy; <a class="underline" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors.
+      </p>
+    {/if}
   </div>
 
   <div class="h-72 lg:h-auto lg:min-h-80">

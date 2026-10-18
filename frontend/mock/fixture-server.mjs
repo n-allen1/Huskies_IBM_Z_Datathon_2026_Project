@@ -1,11 +1,18 @@
-// Stateful fixture server for UI work: fixed, contract-shaped synthetic data (fictional Seattle-area county)
-// plus a working /events/stream. Unlike Prism it returns the same data on every request, so the dispatch
-// screen is predictable. Start it with `npm run mock:fixtures`, then run the UI with
-// VITE_API_TARGET=http://localhost:4011.
+// Stateful fixture server for UI work: fixed, contract-shaped synthetic data plus a working /events/stream.
+// Unlike Prism it returns the same data on every request, so the dispatch screen is predictable.
 //
+//   npm run mock:fixtures   built-in data (fictional Seattle-area county)
+//   npm run mock:seed       the scenarios in database/seed.py, translated to API shapes (see seed-fixture.mjs).
+//                           FIXTURE_SEED_SOURCES="git:5b5a3b5,database/seed.py" combines seeds, because each commit to
+//                           seed.py has replaced the previous scenario (git:<rev> reads an earlier revision).
+//
+// Then run the UI with VITE_API_TARGET=http://localhost:4011.
 // It serves only operations that exist in contracts/openapi.json and does not define any new API surface.
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+import { readSeedSql, parseInserts, mergeTables } from './seed-sql.mjs';
+import { buildFixture } from './seed-fixture.mjs';
 
 const PORT = Number(process.env.PORT ?? 4011);
 const uuid = () => crypto.randomUUID();
@@ -120,6 +127,33 @@ function candidate({ u, eta, reasons }, rank, eligible) {
 const recommendations = new Map(); // incidentId -> latest
 recommendations.set(incidents[1].incidentId, buildRecommendation(incidents[1]));
 
+// ---------- data source ----------
+// The handlers below only use these hooks, so the built-in data and the seed data behave the same way.
+let requirementsFor = (inc) => REQUIREMENTS[DISCIPLINE_FOR[inc.confirmedCategory ?? 'other'] ?? 'police'];
+let makeRecommendation = buildRecommendation;
+let suggestionFor = () => undefined;
+
+if (process.argv.includes('--seed')) {
+  const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+  const sources = (process.env.FIXTURE_SEED_SOURCES ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (!sources.length) sources.push(`${repoRoot}database/seed.py`);
+  const tables = mergeTables(sources.map((src) => parseInserts(readSeedSql(src.startsWith('git:') || /^[A-Za-z]:|^\//.test(src) ? src : `${repoRoot}${src}`, { repoRoot }))));
+  const seed = buildFixture(tables);
+  incidents.splice(0, incidents.length, ...seed.incidents);
+  units.splice(0, units.length, ...seed.units);
+  facilities.splice(0, facilities.length, ...seed.facilities);
+  recommendations.clear();
+  for (const [incidentId, rec] of seed.seededRecommendations) recommendations.set(incidentId, rec);
+  requirementsFor = seed.requirementsFor;
+  makeRecommendation = seed.buildRecommendation;
+  suggestionFor = seed.suggestionFor;
+  console.log(`Seed data from ${sources.join(', ')}: ${incidents.length} incidents, ${units.length} units, ${facilities.length} facilities, ${recommendations.size} recommendations`);
+  const show = (title, items) => items.length && console.log(`${title}\n${items.map((x) => `  - ${x}`).join('\n')}`);
+  show('Seed values translated to contract values:', seed.report.translated);
+  show('Seed values with NO mapping (fell back to a default; extend MAPS in seed-fixture.mjs):', seed.report.unmapped);
+  show('Seed inconsistencies:', seed.report.notes);
+}
+
 // ---------- events ----------
 const clients = new Set();
 let seq = 0;
@@ -194,14 +228,13 @@ http
       if ((r = m(/^\/incidents\/([^/]+)\/requirements$/))) {
         const inc = incidents.find((i) => i.incidentId === r[1]);
         if (!inc) return fail(res, 404, 'not_found', 'Incident not found');
-        const need = DISCIPLINE_FOR[inc.confirmedCategory ?? 'other'] ?? 'police';
-        return send(res, 200, { incidentId: inc.incidentId, policyVersionId: POLICY_ID, generatedAt: iso(), requirements: REQUIREMENTS[need] });
+        return send(res, 200, { incidentId: inc.incidentId, policyVersionId: POLICY_ID, generatedAt: iso(), requirements: requirementsFor(inc) });
       }
       if ((r = m(/^\/incidents\/([^/]+)\/recommendations$/))) {
         const inc = incidents.find((i) => i.incidentId === r[1]);
         if (!inc) return fail(res, 404, 'not_found', 'Incident not found');
         if (req.method === 'POST') {
-          const rec = buildRecommendation(inc);
+          const rec = makeRecommendation(inc);
           recommendations.set(inc.incidentId, rec);
           emit('recommendation.created', 'recommendation', rec.recommendationId);
           return send(res, 201, rec);
@@ -214,6 +247,8 @@ http
         if (!inc) return fail(res, 404, 'not_found', 'Incident not found');
         const base = { classificationId: uuid(), incidentId: inc.incidentId, createdAt: iso(), policyVersionId: POLICY_ID };
         if (body.mode === 'infer') {
+          const seeded = suggestionFor(inc.incidentId);
+          if (seeded) return send(res, 201, { ...base, source: 'ml_inferred', category: seeded.category, suggestedPriority: ['P1', 'P2', 'P3', 'P4'].includes(seeded.priority) ? seeded.priority : undefined, confidence: seeded.confidence, modelVersion: seeded.modelVersion, status: 'suggested', limitations: ['Suggestion taken from the database seed, not a model output.'] });
           return send(res, 201, { ...base, source: 'ml_inferred', category: 'structure_fire', suggestedPriority: 'P1', confidence: 0.91, modelVersion: 'fixture-1', status: 'suggested', limitations: ['Fixture suggestion, not a model output.'] });
         }
         inc.confirmedCategory = body.category; inc.priority = body.priority ?? inc.priority; inc.priorityConfirmed = true;

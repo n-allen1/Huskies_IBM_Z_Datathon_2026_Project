@@ -9,6 +9,6 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [tailwindcss(), sveltekit()],
     server: { proxy: { '/api': { target, changeOrigin: true } } },
-    test: { include: ['src/**/*.test.ts'] }
+    test: { include: ['src/**/*.test.ts', 'mock/**/*.test.mjs'] }
   };
 });
