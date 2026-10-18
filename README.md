@@ -139,11 +139,21 @@ VM (web on port 8001, localhost only, reachable through an SSH tunnel) and never
 
 ### Demo controls
 
-For rehearsing and recording the demo there is a **DEMO · Reset data** button. It is hidden from normal visitors: open the app with
-`?demo=1` (for example `http://<vm-ip>/dispatch?demo=1`; the tab remembers it, `?demo=0` hides it again). It asks for confirmation, then
-discards every incident, recommendation, decision and unit status change and restores the seed data, including the seeded demo incidents, for
-everyone viewing the demo. It calls the contract's `POST /api/v1/admin/demo/reset` (the API's `DEMO_MODE` must be true, as it is in the
-stack). Anyone who can reach the site can use it, so switch it off after judging by setting `DEMO_MODE=false` ([docs/deployment.md](docs/deployment.md#security-notes-for-the-public-listener)).
+To rehearse or re-record the demo, open **`http://<vm-ip>/demo`**. It opens the dispatch screen with a **DEMO · Reset data** button in the
+header. Confirming it discards every incident, recommendation, decision and unit status change and restores the seed data, including the 14
+seeded demo incidents, for everyone viewing the demo. The tab remembers the setting while you move between Dispatch and Intake.
+
+| Address | Result |
+|---|---|
+| `/demo` | Dispatch screen with the reset button on |
+| `/?demo=1` or `/dispatch?demo=1` | Same |
+| `/dispatch?demo=0` | Hides the button again |
+| `/dispatch` (no flag) | Normal view, no button (what visitors see) |
+
+The button is hidden from normal visitors, but anyone who knows the address can use it (it calls the contract's
+`POST /api/v1/admin/demo/reset` with the public demo admin token, and the API's `DEMO_MODE` must be true, as it is in the stack). Any
+deploy also resets the data, because the API restarts. Switch the reset off after judging by setting `DEMO_MODE=false`
+([docs/deployment.md](docs/deployment.md#security-notes-for-the-public-listener)).
 
 ### Configuration
 
