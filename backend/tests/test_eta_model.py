@@ -147,6 +147,21 @@ def test_an_untrained_model_keeps_recommendations_working(settings):
     assert any("straight-line" in line for line in rec["limitations"])
 
 
+@pytest.mark.parametrize("category", [c.value for c in IncidentCategory if c.value != "other"])
+def test_every_ranked_unit_explains_its_place_against_another_unit(settings, category):
+    rec = recommend(api_with(settings, HaversineEta()), category)
+    eligible = sorted((c for c in rec["candidates"] if c["eligible"]), key=lambda c: c["rank"])
+    for c in eligible:
+        comparison = c["rankingFactors"][0]
+        assert comparison["factor"] == "comparison"
+        assert comparison["value"] == f"#{c['rank']} of {len(eligible)} eligible"
+        if len(eligible) == 1:
+            assert comparison["note"] == "Only eligible unit for this incident."
+        else:
+            ref = eligible[1] if c["rank"] == 1 else eligible[0]
+            assert f"{ref['callSign']}" in comparison["note"]
+
+
 class HostileEta:
     """Returns arbitrary ETAs, including 0 s. Whatever it says, eligibility must not change."""
 

@@ -5,6 +5,7 @@ from typing import Callable
 
 from fastapi import FastAPI
 
+from . import demo_incidents
 from .config import APP_VERSION, Settings
 from .errors import install_error_handlers
 from .embedding_classifier import EmbeddingClassifier, FallbackClassifier, GraniteEncoder
@@ -88,6 +89,8 @@ def create_app(
         idempotency=IdempotencyCache(),
         events=EventBus(clock=clock),
     )
+    if settings.seed_incidents:
+        demo_incidents.seed(app.state.services)
     for router in ROUTERS:
         app.include_router(router)
     return app

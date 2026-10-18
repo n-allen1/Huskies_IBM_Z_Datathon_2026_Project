@@ -46,6 +46,8 @@ class Settings:
     # "memory" (lost on restart) or "postgres" (needs DATABASE_URL and the database/ migrations applied).
     store: str = "memory"
     database_url: str | None = None
+    # Seed the synthetic demo incidents (demo_incidents.json) on start-up with an empty store and on every demo reset.
+    seed_incidents: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -61,4 +63,5 @@ class Settings:
             eta_model=os.getenv("ETA_MODEL", "haversine").lower(),
             store=os.getenv("STORE", "memory").lower(),
             database_url=database_url_from_env(),
+            seed_incidents=os.getenv("SEED_INCIDENTS", "false").lower() == "true",
         )

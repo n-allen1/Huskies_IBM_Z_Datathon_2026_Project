@@ -42,7 +42,8 @@ There is no database service. The API's default store is in memory, which is the
 the VM. PostgreSQL support exists in the code (`STORE=postgres`, see [architecture.md](architecture.md#persistence-status)) but is not
 part of the stack; adding it means a `db` service with a volume, its password in the VM-only `.env`, running the Alembic migrations on
 start, and confirming the PostgreSQL driver installs on s390x. The data is synthetic and re-seeded on every start, so nothing is lost
-by restarting.
+by restarting. With `SEED_INCIDENTS=true` (the stack's default) that includes 14 categorized demo incidents from
+`backend/app/demo_incidents.json`, also restored by a demo reset; regenerate that file with `scripts/seed_incidents.py`.
 
 The browser calls `/api/...` on the origin it loaded the page from (`baseUrl: ''` in `frontend/src/lib/api/client.ts`), so no API URL
 is configured anywhere and nothing can point at the visitor's own `localhost`.

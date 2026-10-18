@@ -78,7 +78,17 @@
   const ineligible = $derived(candidates.filter((c) => !c.eligible));
   const chosenIds = $derived(Object.keys(chosen).filter((k) => chosen[k]));
   const chosenCandidates = $derived(chosenIds.map((id) => candidates.find((c) => c.unitId === id)).filter((c): c is Candidate => !!c));
-  const needsOverride = $derived(chosenCandidates.some((c) => !c.eligible || c.rank !== 1));
+  // What 'accept' assigns: the recommended package, which covers the mandatory requirements and so can differ from
+  // the fastest unit (e.g. a BLS ambulance ranked #1 by ETA cannot cover an ALS call).
+  const pkg = $derived(recommendation?.packages?.[0]);
+  const recommendedIds = $derived(pkg?.unitIds ?? []);
+  const matchesPackage = $derived(chosenIds.length === recommendedIds.length && recommendedIds.every((id) => chosen[id]));
+  // Same rule as the backend: ineligible or non-recommended units are an override and need a reason.
+  const needsOverride = $derived(chosenCandidates.some((c) => !c.eligible) || (chosenIds.length > 0 && !matchesPackage));
+  const acceptBlocker = $derived(
+    decision !== 'accept' ? '' : !recommendedIds.length ? 'No package was recommended; use Modify to choose units, or Reject.'
+      : !matchesPackage ? 'The ticked units differ from the recommended package; use Modify, or select Accept again to restore it.' : ''
+  );
   // Staleness only matters before a decision: once reviewed, the recommendation is history, and the
   // decision's own unit status changes (e.g. dispatched_simulated) must not flag it as outdated.
   const isStale = $derived(
@@ -88,7 +98,7 @@
         (recommendation?.expiresAt ? Date.parse(recommendation.expiresAt) < now : false))
   );
   const canSubmit = $derived(
-    !!recommendation && !reviewed && busy !== 'review' &&
+    !!recommendation && !reviewed && busy !== 'review' && !acceptBlocker &&
       (decision === 'reject' || (chosenIds.length > 0 && (!needsOverride || overrideReason.trim().length > 0)))
   );
 
@@ -212,8 +222,13 @@
     reviewed = false;
     decision = 'accept';
     explanation = overrideReason = '';
-    chosen = Object.fromEntries(r.candidates.filter((c) => c.rank === 1).map((c) => [c.unitId, true]));
+    chosen = Object.fromEntries((r.packages?.[0]?.unitIds ?? []).map((id) => [id, true]));
     reviewKey = newIdempotencyKey();
+  }
+
+  function chooseDecision(v: 'accept' | 'modify' | 'reject') {
+    // Accept always means the recommended package, so selecting it restores those ticks.
+    if (v === 'accept') chosen = Object.fromEntries(recommendedIds.map((id) => [id, true]));
   }
 
   // ---------- actions ----------
@@ -396,6 +411,7 @@
       <label for="cand-{c.unitId}" class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
         {#if c.eligible}<span class="font-mono text-xs text-muted">#{c.rank}</span>{/if}
         <span class="text-sm font-semibold">{c.callSign}</span>
+        {#if recommendedIds.includes(c.unitId)}<span class="badge border-ai text-ai">★ Recommended</span>{/if}
         {#if c.eligible}
           <span class="badge border-ok/60 text-ok">✔ Eligible</span>
         {:else}
@@ -421,7 +437,15 @@
           {/each}
         </ul>
         {#if c.rankingFactors?.length}
-          <p class="mt-1.5 text-muted">Ranking factors: {c.rankingFactors.map((f) => `${f.factor}${f.value ? ' ' + f.value : ''}`).join('; ')}</p>
+          <p class="mt-1.5 text-muted">Ranking factors:</p>
+          <ul class="mt-0.5 list-disc space-y-0.5 pl-4 text-muted">
+            {#each c.rankingFactors as f}
+              <li>
+                <span class="text-fg">{f.factor.replaceAll('_', ' ')}{f.value ? ': ' + f.value : ''}</span>
+                {#if f.note}<span class="block">{f.note}</span>{/if}
+              </li>
+            {/each}
+          </ul>
         {/if}
         {#if c.coverageImpact}<p class="mt-1 text-muted">Coverage impact: {c.coverageImpact}</p>{/if}
         <button
@@ -734,6 +758,17 @@
             {#if recommendation.limitations?.length}
               <ul class="mt-1.5 list-disc pl-5 text-xs text-muted">{#each recommendation.limitations as l}<li>{l}</li>{/each}</ul>
             {/if}
+            {#if pkg}
+              <div class="mt-3 rounded-md border p-2 text-xs {pkg.satisfiesAllMandatory ? 'border-ai/60 bg-ai-soft' : 'border-warn bg-warn-soft'}">
+                <p class="font-semibold text-fg">
+                  {pkg.satisfiesAllMandatory ? '★' : '▲'} Recommended package:
+                  {candidates.filter((c) => recommendedIds.includes(c.unitId)).map((c) => c.callSign).join(' + ')}
+                  {#if pkg.worstEtaSeconds != null}<span class="font-normal text-muted">· all on scene in {formatEta(pkg.worstEtaSeconds)}</span>{/if}
+                </p>
+                {#if pkg.explanation}<p class="mt-0.5 text-muted">{pkg.explanation}</p>{/if}
+                <p class="mt-0.5 text-muted">Ranks order eligible units by ETA alone; the package is what covers the mandatory requirements.</p>
+              </div>
+            {/if}
             <h4 class="mt-3 mb-1.5 text-xs font-semibold text-muted">Eligible units ({eligible.length})</h4>
             {#if eligible.length}
               <ul class="space-y-1.5">{#each eligible as c (c.unitId)}{@render candidateRow(c)}{/each}</ul>
@@ -762,20 +797,21 @@
               <div class="grid grid-cols-3 gap-1" role="radiogroup">
                 {#each [['accept', 'Accept'], ['modify', 'Modify'], ['reject', 'Reject']] as [v, t]}
                   <label class="btn cursor-pointer justify-center {decision === v ? 'border-accent bg-accent-soft' : ''} has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-accent">
-                    <input type="radio" class="sr-only" name="decision" value={v} bind:group={decision} />{t}
+                    <input type="radio" class="sr-only" name="decision" value={v} bind:group={decision} onchange={() => chooseDecision(v as 'accept' | 'modify' | 'reject')} />{t}
                   </label>
                 {/each}
               </div>
               <p class="mt-1.5 text-xs text-muted">
-                {decision === 'accept' ? 'Use the ticked units above.' : decision === 'modify' ? 'Use the ticked units above after changing the selection.' : 'Record that no recommended units are used.'}
+                {decision === 'accept' ? 'Assign the recommended package.' : decision === 'modify' ? 'Use the ticked units above after changing the selection.' : 'Record that no recommended units are used.'}
               </p>
+              {#if acceptBlocker && !reviewed}<p class="mt-1 text-xs text-warn">▲ {acceptBlocker}</p>{/if}
               <div class="mt-3">
                 <label class="label" for="exp">Explanation <span class="font-normal text-faint">(optional)</span></label>
                 <textarea id="exp" class="field" rows="2" maxlength="2000" bind:value={explanation}></textarea>
               </div>
               {#if needsOverride && decision !== 'reject'}
                 <div class="mt-2">
-                  <label class="label" for="ovr">Override reason <span class="text-warn">(required)</span>: selection differs from the top-ranked eligible unit</label>
+                  <label class="label" for="ovr">Override reason <span class="text-warn">(required)</span>: selection differs from the recommended package</label>
                   <textarea id="ovr" class="field" rows="2" maxlength="2000" required bind:value={overrideReason}></textarea>
                 </div>
               {/if}
