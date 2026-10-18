@@ -1,5 +1,6 @@
 import { redirect } from '@sveltejs/kit';
 
-export function load() {
-  redirect(307, '/dispatch');
+// Keep the query string, so /?demo=1 still turns the demo controls on.
+export function load({ url }) {
+  redirect(307, '/dispatch' + url.search);
 }

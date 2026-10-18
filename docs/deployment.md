@@ -191,7 +191,7 @@ run summary is the proof that a browser elsewhere can connect; a warning there m
 - **Demo reset.** `POST /api/v1/admin/demo/reset` restores the seed data and is the one operator endpoint the proxy lets through (POST
   only; every other `/api/v1/admin/*` path is still a 403 at the proxy). It needs the `system_admin` token, which, like the dispatcher
   token, is a well-known demo string shipped in the UI's JavaScript, so **anyone who can reach the site can reset the demo for
-  everybody**. That is the price of a reset button on a public demo. The button is hidden unless a tab is opened with `?demo=1`, and
+  everybody**. That is the price of a reset button on a public demo. The button is hidden unless a tab is opened with `/demo` (or `?demo=1`), and
   it asks for confirmation. To switch the reset off entirely (for example after judging), set `DEMO_MODE=false` in `~/dispatchz/.env`
   and redeploy: the endpoint then answers 403 and the button shows that. Operators can also reach it directly through the API's
   loopback port over an SSH tunnel (`ssh -L 8000:localhost:8000 ...`, then `http://localhost:8000`).
