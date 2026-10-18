@@ -88,9 +88,12 @@ echo "== copying to $VM_HOST"
 ssh "${ssh_opts[@]}" "$VM_HOST" "rm -rf ~/$upload && mkdir -p ~/$upload"
 scp -q "${ssh_opts[@]}" "$work/web.tar.gz" "$work/bundle.tgz" "$VM_HOST:~/$upload/"
 
-ssh "${ssh_opts[@]}" "$VM_HOST" bash -s -- "$mode" "$ref" "$tag" "$project" "$prefix" "$dir" "$web_bind" "$web_port" "$api_port" "$upload" "$target" <<'REMOTE'
+ssh "${ssh_opts[@]}" "$VM_HOST" bash -s -- "$mode" "$ref" "$tag" "$project" "$prefix" "$dir" "${web_bind:--}" "${web_port:--}" "$api_port" "$upload" "$target" <<'REMOTE'
 set -euo pipefail
 mode="$1"; ref="$2"; tag="$3"; project="$4"; prefix="$5"; dir="$6"; web_bind="$7"; web_port="$8"; api_port="$9"; upload="${10}"; target="${11}"
+# ssh joins its arguments into one command line, which drops empty ones; "-" stands for "not set".
+if [ "$web_bind" = - ]; then web_bind=""; fi
+if [ "$web_port" = - ]; then web_port=""; fi
 root="$HOME/$dir"; up="$HOME/$upload"; build="$root/.build"
 mkdir -p "$root"
 
