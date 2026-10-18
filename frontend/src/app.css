@@ -1,7 +1,7 @@
 @import 'tailwindcss';
 
 /*
- * ResponseMatch night theme.
+ * DispatchZ night theme.
  * Surfaces step up in lightness (app < panel < raised); borders are one quiet step above raised.
  * Severity and status colors are reserved for operational meaning: do not use them for decoration.
  * Every text color below meets WCAG AA (4.5:1) on app, panel and raised surfaces.
