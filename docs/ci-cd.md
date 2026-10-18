@@ -104,13 +104,55 @@ The workflow reports results; it cannot block a push by itself. Settings → Bra
 Without this rule, anyone can still push straight to `main`; CI then runs and the deploy is skipped on failure, but the bad commit
 is already on `main`.
 
+## Pinned versions
+
+Nothing the pipeline or the VM build depends on is allowed to change unless a pull request changes it on purpose.
+
+| What | Pinned by | Where |
+|---|---|---|
+| CI runner image | `ubuntu-24.04` | `runs-on` in the workflow |
+| GitHub Actions | Full commit SHA, with the version in a comment | `uses:` lines in the workflow |
+| Python and Node in CI | Exact patch versions (3.12.15, 22.23.3) | `env:` in the workflow |
+| Python packages in CI | Exact versions for the whole dependency tree, resolved against the IBM image's versions | `.github/pins/minimal.lock`, `full.lock` |
+| Frontend packages | Lockfile, installed with `npm ci` | `frontend/package-lock.json` |
+| API packages on the VM (FastAPI, Pydantic, Starlette, Uvicorn, pytest, ...) | Exact versions of what passed on s390x | `backend/constraints.txt`, applied by the Dockerfile |
+| IBM's base image (PyTorch, `torch_nnpa`, XGBoost, ...) | Image digest, not the moving `:latest` tag | `ARG BASE_IMAGE` in `backend/Dockerfile` |
+| Embedding model weights | Hugging Face revision | `MODEL_REVISION` in `backend/app/embedding_classifier.py` |
+| Contract linter | Exact version | the Redocly line in the workflow |
+
+CI installs the lock with `pip install --no-deps` and then runs `pip check`, so a dependency missing from the lock fails the job
+instead of being fetched at whatever version is newest.
+
+What is still not pinned: the packages that come preinstalled on the GitHub runner image (git, curl, ssh, Docker, Node for `npx`),
+which GitHub updates weekly inside the `ubuntu-24.04` label, and the npm dependencies of the Redocly CLI, which `npx` resolves from
+ranges. Both have been stable; if one ever breaks the contract job, pin it then.
+
+## Updating pinned versions
+
+Do these in a pull request. CI then runs the whole suite against the new versions before anything reaches `main`.
+
+- **Runner, Python or Node in CI:** edit `runs-on` or `env:` in the workflow.
+- **An action:** pick a tag, then use its commit SHA and keep the version comment.
+  `git ls-remote --tags https://github.com/actions/checkout 'refs/tags/v6*'` (for an annotated tag use the SHA on the `^{}` line).
+- **A CI Python package:** edit `.github/pins/minimal.in` or `full.in`, run `pip install uv==0.13.1` and `python scripts/lock_ci.py`,
+  and commit the changed `.lock` files. The script resolves for Linux and Python 3.12 whatever machine you run it on.
+- **A package on the VM (for example FastAPI):** edit `backend/constraints.txt`, then run `bash scripts/deploy_vm.sh` from a branch
+  or read the PR's CI result after merge; the Docker build and the 167 tests on s390x are the real check. Run `scripts/lock_ci.py`
+  too, because the CI locks are resolved against that file.
+- **IBM's base image:** on the VM, `docker pull` the new image, read its digest with
+  `docker image inspect --format '{{index .RepoDigests 0}}' <image>`, put it in the Dockerfile, refresh
+  `.github/pins/ibm-base-image.txt` from `pip list --format=freeze` inside the image, update `backend/constraints.txt` if needed,
+  and rerun `scripts/lock_ci.py`.
+- **Frontend packages:** `npm install <pkg>@<version>` in `frontend/` and commit `package-lock.json`.
+
 ## Running the checks locally
 
 ```bash
-python scripts/check_contract.py                                   # needs: pip install openapi-spec-validator
+pip install --no-deps -r .github/pins/full.lock                    # the exact CI environment (use a virtual environment)
+python scripts/check_contract.py
 npx @redocly/cli@2.64.1 lint contracts/openapi.json
-(cd backend && python -m pytest -q)                                # needs: pip install -r backend/requirements-test.txt [xgboost]
-ruff check --select E9,F63,F7,F82,F811 backend scripts             # needs: pip install ruff
+(cd backend && python -m pytest -q)
+ruff check --select E9,F63,F7,F82,F811 backend scripts
 (cd frontend && npm ci && npm run gen:types && npm run check && npm test && npm run build)
 ```
 
@@ -125,9 +167,10 @@ authentication, or a read-only demo mode), not something the pipeline should do 
 
 ## Limitations and known risks
 
-- **Not yet run on GitHub.** The workflow passes `actionlint`, the check commands were run locally, and the deploy script's
-  failure and rollback paths were exercised against stubbed `docker` and `curl`. The first real run on GitHub and the first
-  deploy from a runner to the VM are unconfirmed. Expect to fix small things on the first run.
+- **Rollback is untested on the VM.** The first run on GitHub (2026-10-18) passed every check and deployed to the VM, so the runner
+  can reach it. The failure and rollback paths were exercised only against stubbed `docker` and `curl`.
+- **Pins go stale.** Pinned versions do not receive security fixes by themselves. Review them before the final submission, and consider
+  Dependabot pull requests if the project continues.
 - **The runner must reach the VM.** GitHub-hosted runners connect to the VM's public SSH port. If the LinuxONE Community Cloud
   restricts inbound addresses, the deploy step fails at the `scp`; the fix is a self-hosted runner on a machine that can reach it.
 - **The VM can change.** Community Cloud instances are time-limited and a new one has a new address and host key. Update `VM_HOST`,

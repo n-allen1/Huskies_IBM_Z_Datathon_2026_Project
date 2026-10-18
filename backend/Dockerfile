@@ -10,7 +10,9 @@
 # Run the API (bound to localhost on the host; reach it through an SSH tunnel):
 #   docker run -d --name dispatchz-api -p 127.0.0.1:8000:8000 -e DEMO_MODE=true --restart unless-stopped dispatchz-api
 
-ARG BASE_IMAGE=registry.linuxone.cloud.marist.edu/l1cc/jupyterlab-image-s390x:latest
+# Pinned by digest, not by the moving :latest tag, so IBM republishing the image cannot change our build. Update on purpose:
+# docs/ci-cd.md, "Updating pinned versions".
+ARG BASE_IMAGE=registry.linuxone.cloud.marist.edu/l1cc/jupyterlab-image-s390x:latest@sha256:d2da8a7b0c88c3b468e29014b2ada9ef8274f98c976ec456904c5e2bae5aa54c
 FROM ${BASE_IMAGE} AS base
 
 ARG PYTHON=/opt/venv/bin/python
@@ -22,12 +24,12 @@ ENV PYTHON=${PYTHON} \
 ENTRYPOINT []
 
 WORKDIR /app/backend
-COPY backend/requirements.txt ./
+COPY backend/requirements.txt backend/constraints.txt ./
 
-# Pin every package that is already installed so pip cannot upgrade or replace IBM's ML libraries.
-# If our requirements conflict with them the build fails loudly instead of silently changing torch.
+# Pin every package that is already installed so pip cannot upgrade or replace IBM's ML libraries, and pin our own packages to the
+# versions in constraints.txt. If our requirements conflict with either the build fails loudly instead of silently changing torch.
 RUN ${PYTHON} -m pip list --format=freeze > /tmp/constraints.txt \
- && ${PYTHON} -m pip install --no-cache-dir -c /tmp/constraints.txt -r requirements.txt \
+ && ${PYTHON} -m pip install --no-cache-dir -c /tmp/constraints.txt -c constraints.txt -r requirements.txt \
  && rm /tmp/constraints.txt \
  && ${PYTHON} -c "import torch, xgboost, fastapi, pydantic_core; print('torch', torch.__version__, '| xgboost', xgboost.__version__, '| fastapi', fastapi.__version__)"
 
@@ -38,7 +40,7 @@ COPY backend/app ./app
 FROM base AS test
 COPY backend/requirements-test.txt ./
 RUN ${PYTHON} -m pip list --format=freeze > /tmp/constraints.txt \
- && ${PYTHON} -m pip install --no-cache-dir -c /tmp/constraints.txt -r requirements-test.txt \
+ && ${PYTHON} -m pip install --no-cache-dir -c /tmp/constraints.txt -c constraints.txt -r requirements-test.txt \
  && rm /tmp/constraints.txt
 COPY backend/tests ./tests
 COPY contracts/openapi.json /app/contracts/openapi.json
