@@ -768,7 +768,7 @@ export interface components {
         Provenance: {
             /** @enum {string} */
             dataOrigin: "synthetic" | "public_historical" | "simulated" | "user_entered" | "model_generated";
-            /** @example responsematch-seed-v1 */
+            /** @example dispatchz-seed-v1 */
             sourceSystem?: string;
             /**
              * Format: date-time
@@ -890,7 +890,7 @@ export interface components {
          *       "updatedAt": "2026-03-01T14:03:40Z",
          *       "provenance": {
          *         "dataOrigin": "synthetic",
-         *         "sourceSystem": "responsematch-seed-v1",
+         *         "sourceSystem": "dispatchz-seed-v1",
          *         "sourceTimestamp": "2026-03-01T14:00:00Z",
          *         "verificationStatus": "verified",
          *         "stale": false
@@ -1269,7 +1269,7 @@ export interface components {
          *       "version": 7,
          *       "provenance": {
          *         "dataOrigin": "simulated",
-         *         "sourceSystem": "responsematch-seed-v1",
+         *         "sourceSystem": "dispatchz-seed-v1",
          *         "sourceTimestamp": "2026-03-01T14:00:00Z",
          *         "verificationStatus": "verified",
          *         "stale": false
@@ -1952,6 +1952,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description INTERNAL_ERROR */
+        InternalError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
         Limit: number;
@@ -1999,6 +2008,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     getHealth: {
@@ -2019,7 +2029,16 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
-            503: components["responses"]["Unavailable"];
+            500: components["responses"]["InternalError"];
+            /** @description Not ready; `components` reports which dependency is down. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Health"];
+                };
+            };
         };
     };
     listIncidents: {
@@ -2056,6 +2075,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     createIncident: {
@@ -2087,6 +2107,7 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
         };
     };
     getIncident: {
@@ -2109,9 +2130,11 @@ export interface operations {
                     "application/json": components["schemas"]["Incident"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     updateIncident: {
@@ -2143,6 +2166,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
         };
     };
     listIncidentEvents: {
@@ -2171,9 +2195,11 @@ export interface operations {
                     "application/json": components["schemas"]["IncidentEventList"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     createClassification: {
@@ -2205,6 +2231,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];
         };
     };
@@ -2228,9 +2255,11 @@ export interface operations {
                     "application/json": components["schemas"]["RequirementSet"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     listIncidentRecommendations: {
@@ -2259,9 +2288,11 @@ export interface operations {
                     "application/json": components["schemas"]["RecommendationList"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     createRecommendation: {
@@ -2296,6 +2327,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];
         };
     };
@@ -2319,9 +2351,11 @@ export interface operations {
                     "application/json": components["schemas"]["Recommendation"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     createRecommendationReview: {
@@ -2356,6 +2390,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
         };
     };
     listUnits: {
@@ -2390,6 +2425,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     getUnit: {
@@ -2412,9 +2448,11 @@ export interface operations {
                     "application/json": components["schemas"]["Unit"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     listFacilities: {
@@ -2445,6 +2483,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listApparatus: {
@@ -2475,6 +2514,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listCapabilityDefinitions: {
@@ -2503,6 +2543,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     getUnitCapabilities: {
@@ -2525,9 +2566,11 @@ export interface operations {
                     "application/json": components["schemas"]["UnitCapabilities"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     createUnitStatusEvent: {
@@ -2562,6 +2605,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
         };
     };
     listPersonnel: {
@@ -2594,6 +2638,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     getPersonnel: {
@@ -2616,9 +2661,11 @@ export interface operations {
                     "application/json": components["schemas"]["Personnel"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     listCredentials: {
@@ -2647,9 +2694,11 @@ export interface operations {
                     "application/json": components["schemas"]["CredentialList"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     createCredential: {
@@ -2684,6 +2733,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
         };
     };
     updateCredential: {
@@ -2716,6 +2766,7 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
         };
     };
     listForecasts: {
@@ -2749,6 +2800,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     getCoverage: {
@@ -2777,6 +2829,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listCoverageGaps: {
@@ -2808,6 +2861,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listShifts: {
@@ -2840,6 +2894,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     createScenario: {
@@ -2870,6 +2925,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     getScenario: {
@@ -2892,9 +2948,11 @@ export interface operations {
                     "application/json": components["schemas"]["Scenario"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     createScenarioEvaluation: {
@@ -2920,10 +2978,12 @@ export interface operations {
                     "application/json": components["schemas"]["ScenarioEvaluation"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
             503: components["responses"]["Unavailable"];
         };
     };
@@ -2949,6 +3009,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listTrainingGaps: {
@@ -2977,6 +3038,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listEquipmentGaps: {
@@ -3005,6 +3067,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listLeadershipRecommendations: {
@@ -3033,6 +3096,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listAuditEvents: {
@@ -3068,6 +3132,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listPolicies: {
@@ -3098,6 +3163,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     getPolicy: {
@@ -3120,9 +3186,11 @@ export interface operations {
                     "application/json": components["schemas"]["Policy"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
         };
     };
     streamEvents: {
@@ -3159,6 +3227,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     resetDemoData: {
@@ -3181,6 +3250,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
 }
