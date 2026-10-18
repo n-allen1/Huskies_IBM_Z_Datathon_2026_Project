@@ -21,10 +21,10 @@ sized for ML work).
 
 ## What is deployed
 
-`backend/Dockerfile` builds on IBM's `registry.linuxone.cloud.marist.edu/l1cc/jupyterlab-image-s390x:latest`, which already provides
+`backend/Dockerfile` builds on IBM's `registry.linuxone.cloud.marist.edu/l1cc/jupyterlab-image-s390x` (pinned by digest), which already provides
 PyTorch, IBM's `torch_nnpa` plug-in, `libzdnn`, XGBoost and scikit-learn for s390x. These are not installable from PyPI on s390x
-(no wheels), which is why we build on IBM's image. Our layer adds only the API's own dependencies, pinned so that pip cannot change
-IBM's libraries; a conflict fails the build.
+(no wheels), which is why we build on IBM's image. Our layer adds only the API's own dependencies, at the exact versions in `backend/constraints.txt`, and pip is
+prevented from changing IBM's libraries; a conflict fails the build. See [Pinned versions](ci-cd.md#pinned-versions).
 
 | Dockerfile target | Purpose |
 |---|---|

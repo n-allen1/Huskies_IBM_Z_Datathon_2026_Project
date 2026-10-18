@@ -1,0 +1,4 @@
+# CI "minimal" backend job: a clean checkout without xgboost or torch. Resolved into minimal.lock by scripts/lock_ci.py.
+-r ../../backend/requirements-test.txt
+ruff
+openapi-spec-validator
