@@ -125,9 +125,9 @@ authentication, or a read-only demo mode), not something the pipeline should do 
 
 ## Limitations and known risks
 
-- **Not yet run on GitHub.** The workflow passes `actionlint`, the check commands were run locally, and the deploy script's
-  failure and rollback paths were exercised against stubbed `docker` and `curl`. The first real run on GitHub and the first
-  deploy from a runner to the VM are unconfirmed. Expect to fix small things on the first run.
+- **Rollback is untested on the VM.** The first run on GitHub (2026-10-18) passed every check and deployed to the VM, so the runner
+  can reach it. The failure and rollback paths were exercised only against stubbed `docker` and `curl`.
+- **The runner image is moving.** `ubuntu-latest` migrates to Ubuntu 26 on 2026-10-19; if a check breaks afterward, pin `runs-on: ubuntu-24.04`. Expect to fix small things on the first run.
 - **The runner must reach the VM.** GitHub-hosted runners connect to the VM's public SSH port. If the LinuxONE Community Cloud
   restricts inbound addresses, the deploy step fails at the `scp`; the fix is a self-hosted runner on a machine that can reach it.
 - **The VM can change.** Community Cloud instances are time-limited and a new one has a new address and host key. Update `VM_HOST`,

@@ -98,14 +98,14 @@ torch and xgboost on s390x even though they are available through apt or IBM's i
 
 | Check | Status |
 |---|---|
-| Image builds on the VM; tests pass in the image | Confirmed 2026-10-17 with an early version (84 tests). The suite now has 167; rerun the deploy script to reconfirm. |
+| Image builds on the VM; tests pass in the image | Confirmed 2026-10-18 by the CI deploy: all 167 tests pass on s390x |
 | Container healthy, health reports `architecture: s390x` | Confirmed 2026-10-17, before the AI models became the default |
 | Classifier on NNPA fp16: parity and latency | Confirmed with `tools.classifier_eval` and `tools.nnpa_check` ([ai-pipeline.md](ai-pipeline.md#evaluation)) |
 | XGBoost ETA trains and evaluates on s390x | Confirmed with `tools.eta_eval` |
 | Review, unit-status, audit and SSE endpoints on the VM | Not yet confirmed (verified locally only) |
-| Running API reporting `+nnpa-float16` in health | Not yet confirmed |
-| `scripts/deploy_vm.sh` end to end | Not confirmed; its readiness check was fixed on 2026-10-18, and it now fails and rolls back when the build or health check fails (tested only against stubs) |
-| Automatic deploy from GitHub Actions | Not yet run; needs the secrets in [ci-cd.md](ci-cd.md#one-time-setup-a-repository-admin-does-this) |
+| Running API reporting `+nnpa-float16` in health | Confirmed 2026-10-18: `granite-embedding-30m@9b5b096411+nnpa-float16`, `eta: xgboost-3.4.1-eta-synthetic-v1`, status `ok` |
+| `scripts/deploy_vm.sh` end to end | Confirmed 2026-10-18 (run by CI). The failure and rollback paths were tested only against stubs, never on the VM |
+| Automatic deploy from GitHub Actions | Confirmed 2026-10-18: a push to `main` ran all checks, deployed to the VM in under a minute, and the container reported healthy |
 
 ## Security notes
 
