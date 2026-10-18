@@ -79,10 +79,13 @@
   const chosenIds = $derived(Object.keys(chosen).filter((k) => chosen[k]));
   const chosenCandidates = $derived(chosenIds.map((id) => candidates.find((c) => c.unitId === id)).filter((c): c is Candidate => !!c));
   const needsOverride = $derived(chosenCandidates.some((c) => !c.eligible || c.rank !== 1));
+  // Staleness only matters before a decision: once reviewed, the recommendation is history, and the
+  // decision's own unit status changes (e.g. dispatched_simulated) must not flag it as outdated.
   const isStale = $derived(
-    staleReasons.length > 0 ||
-      !!recommendation?.provenance?.stale ||
-      (recommendation?.expiresAt ? Date.parse(recommendation.expiresAt) < now : false)
+    !reviewed &&
+      (staleReasons.length > 0 ||
+        !!recommendation?.provenance?.stale ||
+        (recommendation?.expiresAt ? Date.parse(recommendation.expiresAt) < now : false))
   );
   const canSubmit = $derived(
     !!recommendation && !reviewed && busy !== 'review' &&
@@ -315,7 +318,7 @@
       void loadAll();
     } else if (e.type === 'unit.status_changed') {
       void loadAll();
-      if (recommendation?.candidates.some((c) => c.unitId === e.entity.id)) {
+      if (!reviewed && recommendation?.candidates.some((c) => c.unitId === e.entity.id)) {
         const c = recommendation.candidates.find((x) => x.unitId === e.entity.id);
         staleReasons = [...staleReasons, `Unit ${c?.callSign ?? e.entity.id} changed status`];
       }

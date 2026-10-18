@@ -29,7 +29,7 @@ AI only suggests a category and orders eligible units by ETA; it can never make 
 | Implemented | Human review with override reasons, simulated assignment, stale-recommendation invalidation |
 | Implemented | Docker image for IBM LinuxONE, configured to run the embedding model on the Telum NNPA accelerator in fp16 ([measurements](docs/ai-pipeline.md#evaluation)) |
 | In progress | Web UI (branch `feature/Frontend`, not merged) |
-| In progress | PostgreSQL persistence (schema and seed exist in [`database/`](database/); not connected to the API) |
+| Implemented | Optional PostgreSQL persistence (`STORE=postgres`; schema in [`database/`](database/), see [development.md](docs/development.md#running-against-postgresql)). The default store is in memory |
 | Planned | Demand forecasting and staffing-gap analysis, leadership reports, road-network routing |
 
 ## Quick Start
@@ -49,7 +49,7 @@ python -m pytest -q                        # 332 passed, 161 skipped (493 with t
 DEMO_MODE=true python -m uvicorn app.main:app --port 8000     # PowerShell: $env:DEMO_MODE="true"; python -m uvicorn ...
 ```
 
-No database or other service is needed. Configuration variables are listed in [`.env.example`](.env.example); the API reads the process
+No database or other service is needed (PostgreSQL is optional, see [development.md](docs/development.md#running-against-postgresql)). Configuration variables are listed in [`.env.example`](.env.example); the API reads the process
 environment and defaults are fine for a first run. Locally the API uses its rule-based fallbacks; the ML components run in the
 LinuxONE image (see [development.md](docs/development.md#running-with-the-ml-components-locally)).
 
@@ -100,7 +100,7 @@ The shared demo API is deployed by CI when a pull request is merged to `main` ([
 | Contract | OpenAPI 3.1, Prism, Swagger UI | Contract-first development, mock, viewer | Development tool |
 | Frontend | SvelteKit, Svelte 5, Vite, Tailwind, Leaflet | Dispatcher UI (branch) | Direct dependency |
 | Maps | Photon (OpenStreetMap) and Esri tiles | Geocoding and basemap, called by the browser; demo data only | External service |
-| Database | PostgreSQL, Alembic | Schema and seed (not connected yet) | Planned |
+| Database | PostgreSQL, Alembic | Optional persistence for the API (`STORE=postgres`) | Optional |
 
 Versions and the full list are in [`backend/requirements*.txt`](backend/requirements.txt) and [docs/open-source.md](docs/open-source.md).
 
@@ -112,13 +112,12 @@ flowchart LR
         API["DispatchZ API<br/>FastAPI"] --> RULES["Rules engine<br/>eligibility and ranking"]
         API --> CLS["Classifier<br/>PyTorch and Granite 30M<br/>NNPA fp16"]
         RULES --> ETA["ETA model<br/>XGBoost"]
-        API --> STORE[("In-memory store<br/>synthetic data")]
+        API --> STORE[("Store: in memory (default)<br/>or PostgreSQL<br/>synthetic data")]
     end
     UI["Web UI<br/>branch feature/Frontend"] -->|"REST and SSE"| API
-    PG[("PostgreSQL<br/>schema and seed, not connected")] -.->|planned| STORE
 ```
 
-Everything inside the box runs on LinuxONE; the dotted link is planned. More detail and the processing flowchart are in
+Everything inside the box runs on LinuxONE. More detail and the processing flowchart are in
 [docs/architecture.md](docs/architecture.md).
 
 ## Project structure
@@ -127,7 +126,7 @@ Everything inside the box runs on LinuxONE; the dotted link is planned. More det
 .
 ├── backend/          FastAPI service: app/, tests/, tools/, Dockerfile, requirements*.txt
 ├── contracts/        openapi.json (source of truth) and swagger.html (viewer)
-├── database/         PostgreSQL schema (Alembic) and seed script; not yet connected
+├── database/         PostgreSQL schema (Alembic migrations) and the Seattle demo seed script; used by the API with `STORE=postgres`
 ├── docs/             architecture, development, deployment, ci-cd, ai-pipeline, open-source, MVP plan
 ├── frontend/         generated API types on main; the UI is on branch feature/Frontend
 ├── .github/          CI/CD workflow (checks and deploy)

@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from urllib.parse import quote
 from uuid import UUID, uuid5
 
 APP_VERSION = "0.1.0"
@@ -12,6 +13,17 @@ DEMO_TENANT_ID = uuid5(ID_NAMESPACE, "tenant:demo-county")
 
 def stable_id(name: str) -> UUID:
     return uuid5(ID_NAMESPACE, name)
+
+
+def database_url_from_env() -> str | None:
+    """DATABASE_URL, else built from the DB_* variables that database/alembic uses (so one set serves both)."""
+    if url := os.getenv("DATABASE_URL"):
+        return url
+    user, password = os.getenv("DB_USER"), os.getenv("DB_PASSWORD")
+    if not user or not password:
+        return None
+    host, port, name = os.getenv("DB_HOST", "localhost"), os.getenv("DB_PORT", "5432"), os.getenv("DB_NAME", "responsematch")
+    return f"postgresql://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{name}"
 
 
 @dataclass(frozen=True)
@@ -31,6 +43,9 @@ class Settings:
     embedding_min_margin: float = 0.02
     # "haversine" (straight-line) or "xgboost" (trained at start-up on synthetic travel times, straight-line fallback).
     eta_model: str = "haversine"
+    # "memory" (lost on restart) or "postgres" (needs DATABASE_URL and the database/ migrations applied).
+    store: str = "memory"
+    database_url: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -44,4 +59,6 @@ class Settings:
             embedding_min_similarity=float(os.getenv("EMBEDDING_MIN_SIMILARITY", "0.75")),
             embedding_min_margin=float(os.getenv("EMBEDDING_MIN_MARGIN", "0.02")),
             eta_model=os.getenv("ETA_MODEL", "haversine").lower(),
+            store=os.getenv("STORE", "memory").lower(),
+            database_url=database_url_from_env(),
         )

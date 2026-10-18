@@ -23,8 +23,9 @@ cd backend
 python -m pytest -q
 ```
 
-Expect `332 passed, 161 skipped` with only the test requirements. The skipped tests need the optional `xgboost` and `scipy` packages
-(the exact multi-incident solver and the ETA model); with both installed, `pip install -r backend/requirements-dev.txt`, all 493 pass. Run the API:
+Expect `338 passed, 171 skipped` with only the test requirements. The skipped tests need the optional `xgboost` and `scipy` packages
+(the exact multi-incident solver and the ETA model) or a PostgreSQL database (see below); with `pip install -r backend/requirements-dev.txt`,
+only the 10 PostgreSQL tests skip (`499 passed, 10 skipped`). Run the API:
 
 ```bash
 DEMO_MODE=true python -m uvicorn app.main:app --port 8000        # PowerShell: $env:DEMO_MODE="true"; python -m uvicorn ...
@@ -34,6 +35,36 @@ Requirements files: [`requirements.txt`](../backend/requirements.txt) (runtime),
 (tests), [`requirements-dev.txt`](../backend/requirements-dev.txt) (adds contract tooling and `xgboost`; local only, because the LinuxONE
 image ships it). Configuration variables are in [`.env.example`](../.env.example); the API reads the process environment and does not
 load that file itself.
+
+### Running against PostgreSQL
+
+The default store is in memory. For data that survives restarts, run the API on PostgreSQL (`STORE=postgres`). `scripts/db_dev.sh`
+starts a database container of its own (own name, volume and port; it does not touch other containers or any compose project):
+
+```bash
+pip install -r backend/requirements-postgres.txt -r database/requirements.txt
+export DB_PASSWORD=choose-a-password      # or put it in .env (git-ignored); never commit it
+scripts/db_dev.sh up                      # container "dispatchz-dev-db", 127.0.0.1:5432 (DB_PORT changes it)
+scripts/db_dev.sh migrate                 # alembic upgrade head
+scripts/db_dev.sh api                     # the API on :8000 with STORE=postgres; an empty database is seeded
+```
+
+Other commands: `status`, `psql`, `down` (removes the container, keeps the data volume), `destroy` (also deletes the volume). The
+API reads `DATABASE_URL`, or builds it from the `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER` and `DB_PASSWORD` that the Alembic tooling
+also uses, so one set of variables serves both. To use a database you run yourself, set those variables and run
+`alembic upgrade head` in `database/`, then start the API with `STORE=postgres`.
+
+The API checks the schema revision at start-up and stops with a message if the database is unreachable (after about 10 seconds) or not
+migrated. It only seeds a database that has no units, so restarts keep your data; `POST /api/v1/admin/demo/reset` restores the seed.
+
+To run the whole test suite on PostgreSQL, point it at a **scratch** database (every test resets and truncates it):
+
+```bash
+cd backend
+TEST_STORE=postgres TEST_DATABASE_URL=postgresql://rm_user:PASSWORD@127.0.0.1:5432/responsematch_test python -m pytest -q
+```
+
+Without `TEST_STORE`, the Postgres-specific tests run when `TEST_DATABASE_URL` is set and skip otherwise.
 
 ### Running with the ML components locally
 

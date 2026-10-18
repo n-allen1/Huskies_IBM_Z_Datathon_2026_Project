@@ -41,6 +41,18 @@ def _default_estimator(settings: Settings) -> EtaEstimator:
     return XgboostEta(straight_line, baseline_speed_kmh=settings.assumed_speed_kmh) if settings.eta_model == "xgboost" else straight_line
 
 
+def _default_store(settings: Settings, clock: Callable[[], datetime]) -> Store:
+    if settings.store == "memory":
+        return InMemoryStore(build_seed, clock)
+    if settings.store != "postgres":
+        raise ValueError(f"STORE must be 'memory' or 'postgres', not {settings.store!r}")
+    if not settings.database_url:
+        raise ValueError("STORE=postgres needs DATABASE_URL, or DB_USER and DB_PASSWORD (with DB_HOST, DB_PORT, DB_NAME)")
+    from .pg_store import PostgresStore  # imported here so the in-memory API does not need SQLAlchemy
+
+    return PostgresStore(settings.database_url, build_seed, clock)
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     # Loading the model takes seconds; do it off the request path. Until it is ready, the keyword
@@ -68,7 +80,7 @@ def create_app(
     app = FastAPI(title="DispatchZ API", version=APP_VERSION, openapi_url=None, docs_url=None, redoc_url=None, lifespan=_lifespan)
     install_error_handlers(app)
     app.state.services = Services(
-        store=store or InMemoryStore(build_seed, clock),
+        store=store or _default_store(settings, clock),
         settings=settings,
         classifier=classifier or _default_classifier(settings),
         estimator=estimator or _default_estimator(settings),

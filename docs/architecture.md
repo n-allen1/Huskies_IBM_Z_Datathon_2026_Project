@@ -17,7 +17,7 @@ This document describes the system as it exists on `main` today. Planned work is
 | ETA model | XGBoost, trained at start-up on a synthetic simulator, straight-line fallback | Inside the API | Implemented; synthetic training data |
 | Store | In-memory, behind the `Store` interface in `backend/app/store.py` | Inside the API | Implemented; data is lost on restart |
 | Event bus | In-process ring buffer | Inside the API | Implemented; single worker only |
-| PostgreSQL schema and seed | Alembic, `psql` seed script in `database/` | Not deployed | Exists, **not connected to the API** (see [Persistence](#persistence-status)) |
+| PostgreSQL schema and seed | Alembic, `psql` seed script in `database/` | Not deployed | Used by the API when `STORE=postgres` (see [Persistence](#persistence-status)) |
 | Web UI | SvelteKit 2, Svelte 5, Leaflet | Developer machine | On branch `feature/Frontend`, not merged to `main` |
 | Geocoding and map tiles | Photon (OpenStreetMap) and Esri tiles, called by the browser | External | Used by the UI for demo data only |
 
@@ -38,12 +38,12 @@ flowchart LR
             SVC["Services: incidents, review,<br/>unit status, audit"]
             RULES["Rules engine:<br/>protocol, hard eligibility, ranking"]
             BUS["Event bus<br/>in-memory ring buffer"]
-            STORE[("In-memory store<br/>and synthetic seed")]
+            STORE[("Store: in memory (default)<br/>or PostgreSQL, synthetic seed")]
             CLS["Incident classifier<br/>PyTorch and Granite Embedding 30M<br/>NNPA fp16, CPU fallback"]
             ETA["ETA model<br/>XGBoost, trained at start-up"]
         end
     end
-    PG[("PostgreSQL schema and seed<br/>database/, not connected")]
+    PG[("PostgreSQL<br/>database/ migrations, STORE=postgres")]
 
     UI -->|"REST and SSE, bearer token"| ROUTES
     UI -.-> GEO
@@ -55,7 +55,7 @@ flowchart LR
     BUS --> ROUTES
     SVC --> CLS
     RULES --> ETA
-    PG -.->|"planned"| STORE
+    PG -.->|"optional"| STORE
 ```
 
 Solid lines exist today; dotted lines are external calls made by the browser, or planned.
@@ -145,22 +145,31 @@ restart makes older `Last-Event-ID` values trigger `stream.resync_required`.
 
 ## Persistence status
 
-The API stores everything in memory; a restart loses it. `database/` holds a PostgreSQL schema (Alembic migration `0001`, 15 tables)
-and a seed script, but nothing connects them to the API yet. The seed script's scenario set has changed between commits (EMS, then
-police, then fire, each replacing the previous one) and currently holds a fire-only set of 6 units and 6 incidents, so check it
-before relying on its vocabulary. Known gaps to close before it can be connected:
+The API runs on one of two `Store` implementations, chosen by `STORE` (see `.env.example`):
 
-| Topic | Database schema and seed | API and contract |
+- `memory` (default): everything is lost on restart; `InMemoryStore` in `backend/app/store.py`.
+- `postgres`: `PostgresStore` in `backend/app/pg_store.py`, using `DATABASE_URL`. Apply the Alembic migrations in `database/` first
+  (`alembic upgrade head`). An empty database is seeded with the stand-in seed on start-up and is never re-seeded afterwards, so data
+  survives restarts; `POST /api/v1/admin/demo/reset` (demo mode) restores the seed.
+
+Layout: reference data (facilities, capabilities, personnel, credentials, apparatus, equipment, units and their crews) uses the
+relational tables from migrations `0001`/`0002`, written and read by `backend/app/pg_resources.py`. What the API writes at run time
+(incidents, classifications, recommendations, reviews, unit status events, audit) is in the `api_*` tables from `0003`, each row holding
+the contract model as JSON next to its lookup columns. The `0001` tables `incident`, `review`, `audit` and the like are not used by the
+API: their constraints cannot hold the contract's shapes. Idempotency keys and the event stream's replay buffer stay in process memory.
+
+`database/seed.py` (the Seattle fire scenario) still loads on top of `0002`, but it has no crew links, credentials, apparatus or
+equipment, and its capability codes and categories are not the contract's, so the API shows its units as ineligible. The stand-in seed
+is the one the API and its tests use. Known gaps between the Seattle seed and the contract:
+
+| Topic | Database seed | API and contract |
 |---|---|---|
-| Crew and equipment | No tables linking personnel to units; no apparatus or equipment | The rules engine derives capabilities from crew credentials and equipment readiness |
-| Unit status | `available`, `assigned` | `dispatched_simulated`, `en_route_simulated`, ... |
-| Recommendation status | `current` | `pending_review`, `accepted`, ... |
-| Review decision, credential status | Free-text columns with no rows in the current seed; earlier seeds used `accepted`, `modified` and `active` | `accept`, `modify`, `reject`; `valid`, `unverified`, `revoked`, ... |
-| Incident categories | Free text, for example `vegetation_fire`, `building_alarm_smoke` | The contract's enumeration (`structure_fire`, `wildland_fire`, ...) |
-| Capability codes | `STRUCTURAL_FIRE`, `LADDER_RESCUE`, `HAZMAT_INITIAL`, ... | `CAP-*` identifiers used by the protocol |
+| Crew and equipment | None in the Seattle seed | The rules engine derives capabilities from crew credentials and equipment readiness |
+| Incident categories | Free text, for example `vegetation_fire` | The contract's enumeration (`structure_fire`, `wildland_fire`, ...) |
+| Capability codes | `STRUCTURAL_FIRE`, `LADDER_RESCUE`, ... | `CAP-*` identifiers used by the protocol |
 
-The contract wins: a mapping layer must translate database values into the contract's enumerations. The integration point is the
-`Store` interface in `backend/app/store.py`.
+Testing against PostgreSQL: set `TEST_STORE=postgres` and `TEST_DATABASE_URL` and run `pytest` in `backend/`; the whole suite then runs on
+`PostgresStore`. This **resets and truncates that database**, so point it at a scratch database.
 
 ## Location handling
 
@@ -181,5 +190,5 @@ Not implemented: a real identity provider, TLS termination, encryption at rest, 
 ## Planned work
 
 Planning and Insights modules (demand forecasting, gap detection, leadership reports; contract tier `future`),
-road-network routing, PostgreSQL persistence, and a calibrated
+road-network routing, and a calibrated
 classifier confidence. See [mvp-plan.md](mvp-plan.md) for the original scope and tiers.
