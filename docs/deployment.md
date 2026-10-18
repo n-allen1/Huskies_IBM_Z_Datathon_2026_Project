@@ -15,7 +15,7 @@ Observed on the project's VM (from `lscpu`, `/etc/os-release` and the platform c
 | CPU and memory | 3 CPUs at 5508 MHz (machine type 9175), about 7 GB RAM, 50 GB disk |
 | Operating system | Ubuntu 24.04.5 LTS |
 | Docker | 29.8.0 (podman is not installed) |
-| Docker Compose plugin | **Not yet confirmed.** The deploy script checks for it and stops with install instructions if it is missing |
+| Docker Compose plugin | Compose v5.5.1 and buildx v0.37.1 (checked 2026-10-18); the deploy script still checks for it |
 | Accelerator facility | `nnpa` flag present; `torch_nnpa` reports `nnpa available: True` and `telum2 available: True` |
 
 The VM is requested through the [LinuxONE Community Cloud](https://linuxone.cloud.marist.edu/) (event code `SSF2026` gives an instance
@@ -172,10 +172,11 @@ repository cannot see or change:
 
 1. **Docker** publishes the port (done by `compose.yml`). Note that Docker inserts its own firewall rules, so `ufw` rules do not
    block a published port; the check in step 3 is the only reliable one.
-2. **The VM's own firewall** (`sudo ufw status`, `sudo iptables -S`): allow port 80 if it is active, for example `sudo ufw allow 80/tcp`.
-3. **The cloud network in front of the VM.** The LinuxONE Community Cloud may filter inbound ports; IBM's own instructions open the
-   Jupyter port, so opening ports is possible, but how depends on your instance's configuration. If port 80 is closed there, either open it
-   or set `WEB_PORT` in `~/dispatchz/.env` to a port that is open (for example `WEB_PORT=8080`), run the deploy again, and set the
+2. **The VM's own firewall.** The project's VM has no `ufw`; its `iptables` INPUT chain accepts only ports 22 and 38888 and rejects the
+   rest, but traffic to a published container port is forwarded (DNAT) and does not pass that chain. Confirmed on 2026-10-18: port 80 answered from
+   outside despite it. Check with `sudo iptables -S`; if a rule does block it, `sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT`.
+3. **The cloud network in front of the VM.** The LinuxONE Community Cloud may filter inbound ports; on this instance port 80 is open. If a
+   future instance blocks it, either open it or set `WEB_PORT` in `~/dispatchz/.env` to a port that is open (for example `WEB_PORT=8080`), run the deploy again, and set the
    GitHub Actions variable `VM_WEB_PORT` to the same number so CI probes the right port.
 
 The CI deploy ends with a probe from the GitHub runner to `http://<vm-ip>:<port>/api/v1/health`. A green "Public URL reachable" in the
@@ -228,10 +229,10 @@ What has and has not been confirmed. Items marked "not yet" are implemented but 
 | Compose stack on the CI runner: web serves the app, proxy reaches the API, admin path blocked, proxy follows a recreated API | Checked by the `Containers` CI job, added with this change; first result pending |
 | Web image builds for `linux/s390x` | Checked by the `Containers` CI job (first result pending); not yet loaded and run on the VM |
 | `deploy_vm.sh` logic: two releases, tag/label verification, pruning, rollback of a crashing release | Confirmed 2026-10-18 against local Docker (x86, stock Python base) with `ssh` and `scp` stubbed; not on the VM |
-| Docker Compose plugin present on the VM | Not yet confirmed |
+| Docker Compose plugin present on the VM | Confirmed 2026-10-18: Compose v5.5.1, buildx v0.37.1 |
 | Compose stack deployed by CI and healthy on the VM; `DEPLOYED_REF` matches | Not yet confirmed |
 | Rollback of the Compose stack | Not yet exercised on the VM |
-| Port 80 reachable from the internet | Not yet confirmed; depends on the VM and cloud firewall (CI probes it on every deploy) |
+| Port 80 reachable from the internet | Confirmed 2026-10-18 with a throwaway nginx container published on `0.0.0.0:80` and requested from another network (HTTP 200); CI probes it on every deploy |
 | Review, unit-status, audit and SSE endpoints on the VM, and the UI end to end through the proxy | Not yet confirmed (verified locally only) |
 
 ## Troubleshooting
@@ -251,4 +252,6 @@ What has and has not been confirmed. Items marked "not yet" are implemented but 
 - **`degraded` health.** Models are still loading or a fallback is in use. Check `docker compose -p dispatchz logs api`.
 - **Build fails with a dependency conflict.** The pin step is working as designed; the API's requirements conflict with a package in IBM's image.
 - **Old leftovers from before the rename and before Compose** (`responsematch-*` containers and images, `~/responsematch`,
-  `dispatchz-api:latest`): the deploy removes the containers and the images it knows about; delete anything else by hand.
+  `dispatchz-api:latest`): the deploy removes the `dispatchz-api` and `responsematch-api` containers and the old `dispatchz-api` tags; delete
+  anything else by hand. On the project's VM that includes the `responsematch-frontend` container (loopback port 8080) and its image, and
+  the large `responsematch-*` images, which free several GB of disk.
