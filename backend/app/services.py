@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Callable
 from uuid import UUID, uuid4
 
-from . import eligibility, protocol
+from . import eligibility, multi_incident, protocol
 from .config import Settings
 from .errors import ApiError
 from .events import EventBus
@@ -63,6 +63,11 @@ _TRANSITIONS: dict[IncidentStatus, set[IncidentStatus]] = {
 _TERMINAL = {IS.resolved, IS.cancelled}
 _PRIORITY_CONFIRMERS = {Role.dispatcher, Role.supervisor}
 RULES_VERSION = "eligibility-rules-0.1.0"
+MULTI_INCIDENT_VERSION = "multi-incident-allocation-0.1.0"
+# One joint solve per request: five incidents is far beyond the 13-unit demo fleet and keeps the exact solver instant.
+MAX_JOINT_INCIDENTS = 5
+# Who wins a contested unit. Not inferred by the system: it is the priority a person set on the incident.
+_PRIORITY_RANK = {IncidentPriority.P1: 0, IncidentPriority.P2: 1, IncidentPriority.P3: 2, IncidentPriority.P4: 3}
 
 
 @dataclass
@@ -330,34 +335,24 @@ class Services:
         incident = self.get_incident(incident_id)
         if incident.status in _TERMINAL:
             raise ApiError(ErrorCode.INVALID_STATE_TRANSITION, f"Incident is {incident.status.value}.")
-        if body.scope == RecommendationScope.multi_incident or body.additionalIncidentIds:
-            raise ApiError(
-                ErrorCode.VALIDATION_ERROR, "Multi-incident optimization is not available in this build.",
-                [("scope", "Only single_incident is supported (multi-incident is a later contract tier).")],
-            )
+        joint = self._joint_members(incident, body)
         if body.policyVersionId is not None and body.policyVersionId != protocol.POLICY_ID:
             raise ApiError(
                 ErrorCode.VALIDATION_ERROR, "Unknown policy version.",
                 [("policyVersionId", f"Only {protocol.POLICY_ID} is active.")],
             )
 
-        category, confirmed, basis = self._confirmed_category(incident)
-        if category is None:
-            raise ApiError(
-                ErrorCode.CONFLICT, "Incident has no category; confirm a classification before requesting a recommendation."
-            )
         snapshot = self.store.snapshot()
-        reqs = protocol.requirements_for(category, snapshot.capability_definitions)
-        if not reqs:
-            raise ApiError(
-                ErrorCode.CONFLICT, f"The protocol defines no requirements for '{category.value}'; classify the incident."
-            )
-
         max_candidates = body.maxCandidates or 10
-        evaluation = eligibility.evaluate(
-            snapshot, reqs, incident.location.point, self.estimator, snapshot.taken_at,
-            excluded=set(body.excludeUnitIds or []), max_candidates=max_candidates,
-        )
+        excluded = set(body.excludeUnitIds or [])
+        category, confirmed, basis, evaluation = self._evaluate_incident(incident, snapshot, excluded, max_candidates, primary=True)
+
+        package, stage, optimizer = evaluation.package, RecommendationStage.prioritization, None
+        unmet, joint_limitations, joint_versions = evaluation.unmet, [], []
+        if joint:
+            others = [(i, self._evaluate_incident(i, snapshot, excluded, max_candidates, primary=False)[3]) for i in joint]
+            package, unmet, optimizer, joint_limitations = self._joint_plan(incident, evaluation, others)
+            stage, joint_versions = RecommendationStage.multi_incident_optimization, [MULTI_INCIDENT_VERSION]
 
         limitations = [
             "Decision support only: nothing is dispatched until a dispatcher reviews this recommendation.",
@@ -377,18 +372,20 @@ class Services:
             limitations.append(
                 f"Category '{category.value}' is the caller-reported value and has not been confirmed by a dispatcher."
             )
-        limitations += [f"Unmet mandatory requirement - {u}" for u in evaluation.unmet]
+        limitations += joint_limitations
+        limitations += [f"Unmet mandatory requirement - {u}" for u in unmet]
         if evaluation.units_evaluated > max_candidates:
             limitations.append(f"Showing {max_candidates} of {evaluation.units_evaluated} units.")
 
         now = self.clock()
         recommendation = Recommendation(
             recommendationId=uuid4(), incidentId=incident_id, status=RecommendationStatus.pending_review,
-            stage=RecommendationStage.prioritization, candidates=evaluation.candidates,
-            packages=[evaluation.package] if evaluation.package else None,
+            stage=stage, candidates=evaluation.candidates,
+            packages=[package] if package else None,
             inputs=Inputs(
                 requirementSetGeneratedAt=now, unitSnapshotAt=snapshot.taken_at, classificationId=basis,
-                modelVersions=[f"dispatch-protocol-{protocol.POLICY_VERSION}", RULES_VERSION, *sorted(evaluation.eta_models)],
+                modelVersions=[f"dispatch-protocol-{protocol.POLICY_VERSION}", RULES_VERSION, *joint_versions, *sorted(evaluation.eta_models)],
+                optimizer=optimizer,
             ),
             policyVersionId=protocol.POLICY_ID, limitations=limitations, createdAt=now,
             expiresAt=now + timedelta(seconds=self.settings.recommendation_ttl_seconds),
@@ -406,15 +403,126 @@ class Services:
         self._publish(
             "recommendation.created", "recommendation", recommendation.recommendationId, 1, incidentId=str(incident_id),
             eligibleCandidates=len(eligible),
-            satisfiesAllMandatory=bool(evaluation.package and evaluation.package.satisfiesAllMandatory),
+            satisfiesAllMandatory=bool(package and package.satisfiesAllMandatory),
         )
         self._audit(
             user, "recommendation.create", "recommendation", recommendation.recommendationId, incidentId=str(incident_id),
-            eligibleCandidates=len(eligible), unmetMandatory=evaluation.unmet, modelVersions=recommendation.inputs.modelVersions,
+            eligibleCandidates=len(eligible), unmetMandatory=unmet, modelVersions=recommendation.inputs.modelVersions,
+            scope="multi_incident" if joint else "single_incident", optimizer=optimizer,
+            jointIncidentIds=[str(i.incidentId) for i in joint] or None,
         )
         if incident.status in (IS.intake, IS.pending_dispatch):
             self._save(incident, incident.version, status=IS.recommendation_ready)
         return recommendation
+
+    def _joint_members(self, primary: Incident, body: RecommendationCreate) -> list[Incident]:
+        """The other incidents of a multi_incident request, validated. Empty for an ordinary single-incident request."""
+        extra = list(body.additionalIncidentIds or [])
+        if body.scope != RecommendationScope.multi_incident:
+            if extra:
+                raise ApiError(
+                    ErrorCode.VALIDATION_ERROR, "additionalIncidentIds only applies to scope multi_incident.",
+                    [("additionalIncidentIds", "Set scope to multi_incident, or remove this field.")],
+                )
+            return []
+        if not extra:
+            raise ApiError(
+                ErrorCode.VALIDATION_ERROR, "scope multi_incident needs at least one other incident to allocate units across.",
+                [("additionalIncidentIds", "Provide the other incident ids.")],
+            )
+        if len(set(extra)) != len(extra) or primary.incidentId in extra:
+            raise ApiError(
+                ErrorCode.VALIDATION_ERROR, "Each incident may appear only once.",
+                [("additionalIncidentIds", "Contains a duplicate, or the incident being recommended for.")],
+            )
+        if len(extra) + 1 > MAX_JOINT_INCIDENTS:
+            raise ApiError(
+                ErrorCode.VALIDATION_ERROR, f"At most {MAX_JOINT_INCIDENTS} incidents can be planned together.",
+                [("additionalIncidentIds", f"Provide at most {MAX_JOINT_INCIDENTS - 1} ids.")],
+            )
+        members = [self.get_incident(i) for i in extra]  # 404 if one does not exist
+        for member in members:
+            if member.status in _TERMINAL:
+                raise ApiError(ErrorCode.INVALID_STATE_TRANSITION, f"Incident {member.number} is {member.status.value}.")
+        return members
+
+    def _evaluate_incident(self, incident: Incident, snapshot, excluded: set[UUID], max_candidates: int, *, primary: bool):
+        """Category -> protocol requirements -> hard eligibility and ranking for one incident."""
+        who = "Incident" if primary else f"Incident {incident.number}"
+        category, confirmed, basis = self._confirmed_category(incident)
+        if category is None:
+            raise ApiError(
+                ErrorCode.CONFLICT, f"{who} has no category; confirm a classification before requesting a recommendation."
+            )
+        reqs = protocol.requirements_for(category, snapshot.capability_definitions)
+        if not reqs:
+            raise ApiError(
+                ErrorCode.CONFLICT,
+                f"The protocol defines no requirements for '{category.value}'; classify the incident." if primary
+                else f"The protocol defines no requirements for incident {incident.number} ('{category.value}'); classify it.",
+            )
+        evaluation = eligibility.evaluate(
+            snapshot, reqs, incident.location.point, self.estimator, snapshot.taken_at,
+            excluded=excluded, max_candidates=max_candidates,
+        )
+        return category, confirmed, basis, evaluation
+
+    def _joint_plan(self, primary: Incident, primary_eval, others):
+        """Allocate units across the primary and the other incidents; return the primary's part of the plan.
+
+        The same inputs give the same plan whichever incident asks, so asking again from another incident returns that
+        incident's part of this same allocation. Nothing is stored or changed for the other incidents."""
+        members = [(primary, primary_eval), *others]
+        members.sort(key=lambda m: (_PRIORITY_RANK.get(m[0].priority, len(_PRIORITY_RANK)), m[0].createdAt, m[0].number))
+        problems = [eligibility.to_problem(inc.incidentId, inc.number, ev) for inc, ev in members]
+        plan = multi_incident.optimize(problems)
+
+        part = {}
+        for inc, ev in members:
+            ids = set(plan.assignment[inc.incidentId])
+            chosen = [e for e in ev.eligible_units if e.view.unit.unitId in ids]
+            part[inc.incidentId] = (chosen, eligibility.package_for(chosen, ev.mandatory, "")[1])
+
+        numbers = ", ".join(f"{inc.number} ({inc.priority.value})" for inc, _ in members)
+        summary = " ".join(
+            f"{inc.number}: {', '.join(e.view.unit.callSign for e in part[inc.incidentId][0]) or 'no units'}"
+            f"{'' if not part[inc.incidentId][1] else ' (NOT fully staffed)'}."
+            for inc, _ in members
+        )
+        header = f"Joint plan for {numbers}, highest priority first, by {plan.optimizer}. {summary} For this incident:"
+        package, unmet = eligibility.package_for(part[primary.incidentId][0], primary_eval.mandatory, header)
+
+        limitations = [
+            f"Joint allocation across {len(members)} incidents ({numbers}); this recommendation is the part that applies to "
+            f"{primary.number}. Request each other incident's recommendation with scope multi_incident and the same incident set "
+            "to get its part of the same plan. Higher priority wins a contested unit, then the earlier incident.",
+            *plan.notes,
+        ]
+        for inc, _ in members:
+            if inc.priority == IncidentPriority.unassigned:
+                limitations.append(f"{inc.number} has no priority; unassigned incidents rank below P4 when units are contested.")
+            elif not inc.priorityConfirmed:
+                limitations.append(f"{inc.number}'s priority {inc.priority.value} has not been confirmed by a dispatcher.")
+        owner = {
+            e.view.unit.unitId: inc
+            for inc, _ in members if inc.incidentId != primary.incidentId
+            for e in part[inc.incidentId][0]
+        }
+        for e in primary_eval.eligible_units:
+            elsewhere = owner.get(e.view.unit.unitId)
+            if elsewhere is not None:
+                limitations.append(
+                    f"{e.view.unit.callSign} is eligible for this incident but is allocated to {elsewhere.number} "
+                    f"({elsewhere.priority.value}) in the joint plan."
+                )
+        for inc, _ in members:
+            if inc.incidentId != primary.incidentId and part[inc.incidentId][1]:
+                limitations.append(f"{inc.number} cannot be fully staffed in this plan: {' '.join(part[inc.incidentId][1])}")
+        if package is None:
+            limitations.append(
+                f"No unit is allocated to {primary.number} in the joint plan. Review the plan, or request a single-incident recommendation."
+            )
+        return package, unmet, plan.optimizer, limitations
 
     def _expire_if_due(self, rec: Recommendation) -> Recommendation:
         if rec.status == RecommendationStatus.pending_review and rec.expiresAt and rec.expiresAt <= self.clock():

@@ -23,7 +23,8 @@ cd backend
 python -m pytest -q
 ```
 
-Expect `162 passed, 5 skipped` (the 5 need the optional `xgboost` package; with it installed, 167 pass). Run the API:
+Expect `332 passed, 161 skipped` with only the test requirements. The skipped tests need the optional `xgboost` and `scipy` packages
+(the exact multi-incident solver and the ETA model); with both installed, `pip install -r backend/requirements-dev.txt`, all 493 pass. Run the API:
 
 ```bash
 DEMO_MODE=true python -m uvicorn app.main:app --port 8000        # PowerShell: $env:DEMO_MODE="true"; python -m uvicorn ...

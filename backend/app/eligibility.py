@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from . import multi_incident
 from .inference import EtaEstimator, EtaEstimate
 from .models import (
     ApparatusReadiness,
@@ -198,6 +199,9 @@ class Evaluation:
     unmet: list[str]
     eta_models: set[str]
     units_evaluated: int
+    # Kept for the multi-incident allocator: the hard-eligible units (ranked) and this incident's mandatory requirements.
+    eligible_units: list[_Evaluated] = field(default_factory=list)
+    mandatory: list[CapabilityRequirement] = field(default_factory=list)
 
 
 def _origin(view: UnitView) -> GeoPoint | None:
@@ -276,7 +280,47 @@ def evaluate(
     return Evaluation(
         candidates=candidates, package=package, unmet=unmet,
         eta_models={e.eta.model_version for e in evaluated if e.eta}, units_evaluated=len(evaluated),
+        eligible_units=eligible, mandatory=mandatory,
     )
+
+
+def to_problem(incident_id: UUID, label: str, evaluation: Evaluation) -> multi_incident.Problem:
+    """What the joint allocator may see of one incident: its mandatory needs and ONLY the units that passed hard eligibility."""
+    needs = tuple(multi_incident.Need(r.capabilityId, r.quantity or 1) for r in evaluation.mandatory)
+    wanted = {n.capability_id for n in needs}
+    providers = tuple(
+        multi_incident.Provider(
+            e.view.unit.unitId, e.view.unit.callSign, e.eta.seconds,
+            frozenset(c for c in wanted if e.provides(c)),
+        )
+        for e in evaluation.eligible_units
+    )
+    return multi_incident.Problem(incident_id, label, needs, providers)
+
+
+def package_for(chosen: list[_Evaluated], mandatory: list[CapabilityRequirement], header: str) -> tuple[Package | None, list[str]]:
+    """A package for units that were picked elsewhere (the joint plan): what they cover and what is still unmet."""
+    assigned: dict[str, list[str]] = {}
+    unmet: list[str] = []
+    for r in mandatory:
+        need = r.quantity or 1
+        providers = [e for e in chosen if e.provides(r.capabilityId)]
+        for e in providers:
+            caps = assigned.setdefault(e.view.unit.callSign, [])
+            if r.capabilityId not in caps:
+                caps.append(r.capabilityId)
+        if len(providers) < need:
+            unmet.append(f"{r.capabilityId}: {len(providers)} of {need} required unit(s) allocated.")
+    if not chosen:
+        return None, unmet
+    parts = "; ".join(f"{sign} covers {', '.join(caps)}" for sign, caps in assigned.items())
+    text = f"{header} {parts}."
+    if unmet:
+        text += " NOT SATISFIED: " + " ".join(unmet)
+    return Package(
+        packageId=uuid4(), unitIds=[e.view.unit.unitId for e in chosen], satisfiesAllMandatory=not unmet,
+        worstEtaSeconds=max(e.eta.seconds for e in chosen), explanation=text,
+    ), unmet
 
 
 def _to_candidate(e: _Evaluated, rank: int | None, requirements, mandatory) -> Candidate:
@@ -314,8 +358,8 @@ def _build_package(eligible: list[_Evaluated], mandatory: list[CapabilityRequire
     """Greedy cover of the mandatory requirements using ranked eligible units.
 
     Scarcest requirement first, so a rare capability is not starved by a common
-    one. Not optimal (set cover is NP-hard; multi-incident optimization is a
-    later tier) but always honest: whatever cannot be filled is listed."""
+    one. Not optimal (set cover is NP-hard; the exact joint allocation across
+    incidents is multi_incident.py) but always honest: whatever cannot be filled is listed."""
     providers = {r.capabilityId: [e for e in eligible if e.provides(r.capabilityId)] for r in mandatory}
     chosen: list[_Evaluated] = []
     assigned: dict[str, list[str]] = {}
