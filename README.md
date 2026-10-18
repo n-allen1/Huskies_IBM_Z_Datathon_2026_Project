@@ -83,8 +83,10 @@ npm run dev                                # http://localhost:5173
 
 ```bash
 export VM_KEY="/path/to/private-key.pem" VM_HOST="linux1@<vm-ip>"
-bash scripts/deploy_vm.sh
+bash scripts/deploy_vm.sh --dev     # your own test container on the VM; the shared demo API is untouched
 ```
+
+The shared demo API is deployed by CI when a pull request is merged to `main` ([docs/ci-cd.md](docs/ci-cd.md)).
 
 ## Technology stack
 
