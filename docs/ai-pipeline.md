@@ -18,9 +18,9 @@ flowchart LR
     M -->|yes| T["Tokenize"]
     T --> E["Granite embedding<br/>PyTorch, NNPA fp16 or CPU fp32"]
     E --> S["Cosine similarity to the example<br/>sentences of each category"]
-    S --> A{"Best similarity<br/>at least 0.75?"}
+    S --> A{"Best match is a real category,<br/>similarity at least 0.75 and a lead of<br/>at least 0.02 over the runner-up?"}
     A -->|yes| R["Suggest that category,<br/>with the runner-up"]
-    A -->|no| X["Suggest no category;<br/>the dispatcher chooses"]
+    A -->|"no, or it matches the<br/>non-emergency examples best"| X["Suggest no category;<br/>the dispatcher chooses"]
     M -->|"no or failed"| K["Keyword rules,<br/>flagged as a fallback"]
     R --> H["Dispatcher confirms or corrects<br/>HUMAN DECISION"]
     X --> H
@@ -32,8 +32,12 @@ flowchart LR
 - The returned `confidence` is a softmax over category similarities. It orders and scales scores; it is **not a calibrated
   probability**, and the response says so. No priority is suggested.
 - `modelVersion` names the backend that produced a suggestion, for example `...@9b5b096411+nnpa-float16` or `...+cpu-float32`.
-- The abstain threshold (`EMBEDDING_MIN_SIMILARITY`, default 0.75) was chosen on development set A and checked on held-out set B
-  (see [Evaluation](#evaluation)).
+- Each category has hand-written example sentences: tidy descriptions plus first-person, second-hand and terse caller phrasings. An
+  extra `other` class holds examples of non-emergency or unclear calls (noise complaints, wrong numbers, "I need help"); a call that
+  matches those best gets no suggestion.
+- A category is suggested only if its similarity is at least `EMBEDDING_MIN_SIMILARITY` (0.75) **and** it leads the runner-up by at
+  least `EMBEDDING_MIN_MARGIN` (0.02), so two close categories decline instead of guessing. The values were chosen on development
+  sets only (see [Evaluation](#evaluation)); the measured trade-off is below, and both can be changed without a code change.
 
 ## ETA model
 
@@ -73,19 +77,57 @@ cannot load.
 Measured on the project's LinuxONE VM (3 vCPUs), 2026-10-17 and 2026-10-18. Raw outputs are not committed; reproduce them with the
 commands below.
 
-**Classifier**: two sets of 26 hand-written synthetic narratives (13 categories, one narrative with obvious keywords and one
+**Classifier, original sets.** Two sets of 26 hand-written synthetic narratives (13 categories, one narrative with obvious keywords and one
 paraphrased per category). Set A is the development set we looked at and tuned the threshold on; set B was written before any model
 output was seen and is only reported.
 
-| Set | Keyword rules | Granite embedding | Obvious / paraphrased (embedding) |
-|---|---|---|---|
-| A (development) | 13/26 (50%) | 23/26 (88%) | 13/13 and 10/13 |
-| B (held out) | 13/26 (50%) | 23/26 (88%) | 12/13 and 11/13 |
+| Set | Keyword rules | Granite embedding, first version | Granite embedding now | Obvious / paraphrased (now) |
+|---|---|---|---|---|
+| A (development) | 13/26 (50%) | 23/26 (88%) | 24/26 (92%) | 12/13 and 12/13 |
+| B (held out) | 13/26 (50%) | 23/26 (88%) | 25/26 (96%) | 13/13 and 12/13 |
 
-Raw similarity separates right from wrong suggestions poorly (wrong ones scored up to 0.734; correct ones had a median of 0.78). At
-a threshold of 0.74 or 0.76, every suggestion made was correct on both sets (0.74: 18 of 26 answered on each set; 0.76: 16 on A and
-14 on B). The chosen 0.75 lies between those two measured points and was not measured directly. With 52 narratives and 6 errors this
-supports a sensible default; it is not a guarantee.
+These sets are tidy written sentences and contain nothing that should be declined, which is why a second, harder set was added.
+
+**Classifier, natural-language sets** (`backend/tools/classifier_cases.py`; run with `tools.classifier_eval --natural`). Narratives written to
+sound like callers: panicked fragments, second-hand reports, typos, calls with no obvious keyword. 65 per set (13 categories, 5
+each), plus 20 per set that should be declined (non-emergencies, wrong numbers, "I need help"). The held-out set was written before any
+model output was seen for either set; only the development set was used to choose the examples and the abstain rule. Metrics:
+*coverage* is the share of real emergencies that get a suggestion, *precision* is the share of those suggestions that are the right
+category, and *false suggestions* is the share of calls that should be declined but got a suggestion anyway.
+
+| | Top-1 right (dev / held-out) | Coverage (dev / held-out) | Precision (dev / held-out) | False suggestions (dev / held-out) |
+|---|---|---|---|---|
+| Before: original examples, similarity at least 0.75 | 80% / 85% | 57% / 55% | 100% / 97% | 10% / 5% |
+| Now: caller-phrased examples, non-emergency class, margin 0.02 (VM, NNPA fp16) | 89% / 88% | 77% / 77% | 98% / 94% | 5% / 0% |
+
+"Before" was measured on an x86 laptop and "now" on the VM; the VM gave identical results on the accelerator (fp16) and on CPU (fp32),
+and the laptop differed by one borderline call (75% held-out coverage). One call is 1.5 points on the in-scope sets and 5 on the
+negatives, so differences of a few points are noise.
+
+The operating point is a trade-off, not a fact about the model. Higher coverage costs precision and false suggestions (margin 0, laptop,
+current examples):
+
+| Similarity threshold | Coverage dev / held-out | Precision dev / held-out | False suggestions dev / held-out |
+|---|---|---|---|
+| 0.700 | 97% / 95% | 90% / 90% | 25% / 30% |
+| 0.725 | 92% / 89% | 93% / 93% | 15% / 15% |
+| 0.750 | 77% / 82% | 98% / 92% | 10% / 10% |
+| 0.775 | 68% / 54% | 98% / 100% | 5% / 0% |
+
+The deployed rule (0.75 with a 0.02 margin) was the highest-coverage point on the development sets that kept precision at 95% or more and
+false suggestions at 10% or less. A wrong suggestion is reviewed by a dispatcher but can still anchor them, so the defaults favor
+declining. Set `EMBEDDING_MIN_SIMILARITY` and `EMBEDDING_MIN_MARGIN` to move along this curve.
+
+**What this does and does not show.**
+- About a quarter of natural-sounding calls still get no suggestion, and 3 of the 50 suggestions on held-out are for the wrong
+  category. The call that prompted this work ("my husband just dropped to the floor and is not breathing") still declines: it sits on
+  the boundary (similarity 0.75, a lead of about 0.02 over `medical_trauma`).
+- The model leans on object words: "jumped on the way to his *car*" scored `traffic_collision` and "her *car* is still in the driveway"
+  scored `vehicle_fire`. More hand-written examples do not fix that reliably.
+- The same author wrote the examples and the test sentences. Held-out protects against tuning to the test set, not against a shared
+  writing style. The example sentences were written after the held-out set existed, and I took care not to echo its wording, but that
+  cannot be proved. Real calls are noisier, transcribed from speech, and in other languages.
+- Small samples (65 and 20): treat these as indicative, not as operational accuracy.
 
 **Latency and parity** (classifier, one narrative at a time, 52 narratives; includes tokenization, embedding and similarity matching):
 
@@ -115,6 +157,7 @@ laptop, so training is reproducible across the two architectures. Prediction tak
 
 ```bash
 docker run --rm dispatchz-api sh -c 'exec $PYTHON -m tools.classifier_eval --device nnpa --dtype float16'
+docker run --rm dispatchz-api sh -c 'exec $PYTHON -m tools.classifier_eval --natural --device nnpa --dtype float16'
 docker run --rm dispatchz-api sh -c 'exec $PYTHON -m tools.classifier_eval'      # CPU fp32
 docker run --rm dispatchz-api sh -c 'exec $PYTHON -m tools.nnpa_check --sweep --profile'
 docker run --rm dispatchz-api sh -c 'exec $PYTHON -m tools.eta_eval'
