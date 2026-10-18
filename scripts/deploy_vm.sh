@@ -22,10 +22,13 @@ scp "${ssh_opts[@]}" "$archive" "$VM_HOST:~/dispatchz.tgz"
 
 ssh "${ssh_opts[@]}" "$VM_HOST" bash -s -- "$mode" "${DEPLOY_REF:-local}" <<'REMOTE'
 set -euo pipefail
+# DEPLOYED_REF names the commit that is actually running. It changes only after the new API reports healthy; any other way
+# out of this script (failed tests, failed build, rollback) puts the old value back.
+deployed="$(cat ~/dispatchz/DEPLOYED_REF 2>/dev/null || echo unknown)"
 rm -rf ~/dispatchz && mkdir ~/dispatchz
+trap 'echo "$deployed" > ~/dispatchz/DEPLOYED_REF' EXIT
 tar -xzf ~/dispatchz.tgz -C ~/dispatchz
 cd ~/dispatchz
-echo "$2" > DEPLOYED_REF
 # Windows checkouts can leave CRLF behind; Docker and bash both choke on it.
 sed -i 's/\r$//' backend/Dockerfile .dockerignore backend/requirements*.txt backend/constraints.txt scripts/*.sh
 
@@ -36,7 +39,8 @@ if [ "$1" = tests ]; then
 fi
 
 echo "== building runtime image"
-# Keep the image that is running now so a bad deploy can be undone.
+# Keep the image that is running now so a bad deploy can be undone. The dispatchz-api tag is always the running image: a
+# rollback below points it back at the good one. (Tagging by container image ID does not work with Docker's containerd image store.)
 docker image inspect dispatchz-api > /dev/null 2>&1 && docker tag dispatchz-api dispatchz-api:previous || true
 # A failed build must stop the deploy: the old image still exists under the same tag, so checking for it would not notice.
 if ! docker build --label "org.opencontainers.image.revision=$2" -f backend/Dockerfile -t dispatchz-api . > build.log 2>&1; then
@@ -72,10 +76,16 @@ if ! wait_healthy; then
   docker logs --tail 40 dispatchz-api || true
   if docker image inspect dispatchz-api:previous > /dev/null 2>&1; then
     echo "== rolling back to the previous image"
-    start_api dispatchz-api:previous
+    # Put the good image back under the main tag, so the next deploy does not record the broken one as "previous".
+    docker tag dispatchz-api:previous dispatchz-api
+    start_api dispatchz-api
     wait_healthy || echo "WARNING: the previous image is not healthy either"
+    echo "ROLLED BACK: the previous version (commit $deployed) is running again"
+  else
+    echo "There is no previous image to roll back to; the new, unhealthy container is still running."
   fi
   exit 1
 fi
+deployed="$2"
 docker ps --format 'table {{.Names}}\t{{.Status}}'
 REMOTE
