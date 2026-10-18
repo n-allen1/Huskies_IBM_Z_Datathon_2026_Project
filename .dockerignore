@@ -1,11 +1,7 @@
-.git
-**/.venv
+# Allowlist: the backend image needs only these. Everything else (frontend, docs, scripts, .git, .env, keys) stays out of the
+# build context, so it cannot end up in an image layer.
+*
+!backend/
+!contracts/openapi.json
 **/__pycache__
 **/.pytest_cache
-**/node_modules
-frontend
-docs
-scripts
-*.pdf
-*.pem
-.env*

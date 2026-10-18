@@ -18,7 +18,8 @@ This document describes the system as it exists on `main` today. Planned work is
 | Store | In-memory, behind the `Store` interface in `backend/app/store.py` | Inside the API | Implemented; data is lost on restart |
 | Event bus | In-process ring buffer | Inside the API | Implemented; single worker only |
 | PostgreSQL schema and seed | Alembic, `psql` seed script in `database/` | Not deployed | Used by the API when `STORE=postgres` (see [Persistence](#persistence-status)) |
-| Web UI | SvelteKit 2, Svelte 5, Leaflet | Developer machine | On branch `feature/Frontend`, not merged to `main` |
+| Web UI | SvelteKit 2, Svelte 5, Leaflet; static build | `web` container (nginx) on the VM; Vite dev server locally | Implemented; calls the API on its own origin |
+| Web server and proxy | nginx | `web` container on the VM | Serves the UI, proxies `/api` (event stream unbuffered), blocks `/api/v1/admin/*` ([deployment.md](deployment.md#architecture)) |
 | Geocoding and map tiles | Photon (OpenStreetMap) and Esri tiles, called by the browser | External | Used by the UI for demo data only |
 
 ## System architecture
@@ -26,14 +27,15 @@ This document describes the system as it exists on `main` today. Planned work is
 ```mermaid
 flowchart LR
     subgraph Client["Dispatcher workstation (browser)"]
-        UI["Web UI<br/>SvelteKit, branch feature/Frontend"]
+        UI["Web UI<br/>SvelteKit"]
     end
     subgraph External["External services, called by the UI (demo data only)"]
         GEO["Photon geocoder<br/>OpenStreetMap"]
         TILES["Esri map tiles"]
     end
-    subgraph Z["IBM LinuxONE VM: s390x, z/VM guest, Docker"]
-        subgraph API["DispatchZ API container: FastAPI, single worker"]
+    subgraph Z["IBM LinuxONE VM: s390x, z/VM guest, Docker Compose"]
+        WEB["web container<br/>nginx: static UI, /api proxy"]
+        subgraph API["api container: FastAPI, single worker"]
             ROUTES["REST routes and SSE stream<br/>contract: contracts/openapi.json"]
             SVC["Services: incidents, review,<br/>unit status, audit"]
             RULES["Rules engine:<br/>protocol, hard eligibility, ranking"]
@@ -45,7 +47,8 @@ flowchart LR
     end
     PG[("PostgreSQL<br/>database/ migrations, STORE=postgres")]
 
-    UI -->|"REST and SSE, bearer token"| ROUTES
+    UI -->|"HTTP :80"| WEB
+    WEB -->|"REST and SSE, bearer token"| ROUTES
     UI -.-> GEO
     UI -.-> TILES
     ROUTES --> SVC

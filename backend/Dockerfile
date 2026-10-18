@@ -16,6 +16,8 @@ ARG BASE_IMAGE=registry.linuxone.cloud.marist.edu/l1cc/jupyterlab-image-s390x:la
 FROM ${BASE_IMAGE} AS base
 
 ARG PYTHON=/opt/venv/bin/python
+# false only for local runs on a stock Python image (compose.local.yml), which has no torch or xgboost to check for.
+ARG REQUIRE_ML=true
 ENV PYTHON=${PYTHON} \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -31,7 +33,8 @@ COPY backend/requirements.txt backend/constraints.txt ./
 RUN ${PYTHON} -m pip list --format=freeze > /tmp/constraints.txt \
  && ${PYTHON} -m pip install --no-cache-dir -c /tmp/constraints.txt -c constraints.txt -r requirements.txt \
  && rm /tmp/constraints.txt \
- && ${PYTHON} -c "import torch, xgboost, fastapi, pydantic_core; print('torch', torch.__version__, '| xgboost', xgboost.__version__, '| fastapi', fastapi.__version__)"
+ && ${PYTHON} -c "import fastapi, pydantic_core; print('fastapi', fastapi.__version__)" \
+ && if [ "$REQUIRE_ML" = true ]; then ${PYTHON} -c "import torch, xgboost; print('torch', torch.__version__, '| xgboost', xgboost.__version__)"; fi
 
 COPY backend/app ./app
 

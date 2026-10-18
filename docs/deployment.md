@@ -1,7 +1,8 @@
 # Deployment on IBM LinuxONE
 
-The API runs as a Docker container on a LinuxONE Community Cloud VM. This document covers building, running, configuring and
-verifying it. For local development without Docker see [development.md](development.md).
+DispatchZ runs as a two-container Docker Compose stack on a LinuxONE Community Cloud VM: **web** (nginx, serves the UI and proxies
+`/api`) and **api** (FastAPI with the ML components). This document covers the images, the deploy, public access, rollback and
+verification. For local development without Docker see [development.md](development.md); for the pipeline see [ci-cd.md](ci-cd.md).
 
 ## Target environment
 
@@ -14,87 +15,189 @@ Observed on the project's VM (from `lscpu`, `/etc/os-release` and the platform c
 | CPU and memory | 3 CPUs at 5508 MHz (machine type 9175), about 7 GB RAM, 50 GB disk |
 | Operating system | Ubuntu 24.04.5 LTS |
 | Docker | 29.8.0 (podman is not installed) |
+| Docker Compose plugin | **Not yet confirmed.** The deploy script checks for it and stops with install instructions if it is missing |
 | Accelerator facility | `nnpa` flag present; `torch_nnpa` reports `nnpa available: True` and `telum2 available: True` |
 
 The VM is requested through the [LinuxONE Community Cloud](https://linuxone.cloud.marist.edu/) (event code `SSF2026` gives an instance
-sized for ML work).
+sized for ML work). The VM has limited memory and disk and a restricted network, so the design keeps images few and small, keeps two
+releases of each, and avoids needing any registry other than IBM's.
 
-## What is deployed
+## Architecture
 
-`backend/Dockerfile` builds on IBM's `registry.linuxone.cloud.marist.edu/l1cc/jupyterlab-image-s390x` (pinned by digest), which already provides
-PyTorch, IBM's `torch_nnpa` plug-in, `libzdnn`, XGBoost and scikit-learn for s390x. These are not installable from PyPI on s390x
-(no wheels), which is why we build on IBM's image. Our layer adds only the API's own dependencies, at the exact versions in `backend/constraints.txt`, and pip is
-prevented from changing IBM's libraries; a conflict fails the build. See [Pinned versions](ci-cd.md#pinned-versions).
+```mermaid
+flowchart LR
+    B["Browser"] -->|"HTTP, port 80"| WEB
+    subgraph VM["LinuxONE VM: Docker Compose project dispatchz"]
+        WEB["web: nginx<br/>static SvelteKit build, /api proxy"] -->|"network: default, api:8000"| API["api: FastAPI, single worker<br/>PyTorch, XGBoost, in-memory store"]
+    end
+    OP["Operator<br/>SSH tunnel"] -.->|"127.0.0.1:8000"| API
+```
+
+| Service | Image | Published | Notes |
+|---|---|---|---|
+| `web` | `dispatchz-web:<commit>` (nginx on Alpine, the UI baked in) | `0.0.0.0:80` | The only public port. Blocks `/api/v1/admin/*`, streams the event stream unbuffered |
+| `api` | `dispatchz-api:<commit>` (IBM ML base image plus our packages) | `127.0.0.1:8000` | Reachable by the web service over the Compose network; on the host only through the VM's loopback |
+
+There is no database service. The API's default store is in memory, which is the configuration that has been deployed and verified on
+the VM. PostgreSQL support exists in the code (`STORE=postgres`, see [architecture.md](architecture.md#persistence-status)) but is not
+part of the stack; adding it means a `db` service with a volume, its password in the VM-only `.env`, running the Alembic migrations on
+start, and confirming the PostgreSQL driver installs on s390x. The data is synthetic and re-seeded on every start, so nothing is lost
+by restarting.
+
+The browser calls `/api/...` on the origin it loaded the page from (`baseUrl: ''` in `frontend/src/lib/api/client.ts`), so no API URL
+is configured anywhere and nothing can point at the visitor's own `localhost`.
+
+## The images
+
+### API (`backend/Dockerfile`)
+
+Built **on the VM**, because the base image, `registry.linuxone.cloud.marist.edu/l1cc/jupyterlab-image-s390x` (pinned by digest),
+exists only for s390x on IBM's registry. It already provides PyTorch, IBM's `torch_nnpa` plug-in, `libzdnn`, XGBoost and scikit-learn,
+which have no s390x wheels on PyPI. Our layer adds only the API's own dependencies at the versions in `backend/constraints.txt`, and
+pip is prevented from changing IBM's libraries; a conflict fails the build. See [Pinned versions](ci-cd.md#pinned-versions).
 
 | Dockerfile target | Purpose |
 |---|---|
-| `test` | Adds test dependencies and runs the full test suite inside the image |
-| `runtime` (default) | The API: FastAPI on port 8000, one worker, health check. The build tries to pre-download the model; if that fails it is downloaded at first start. |
+| `test` | Adds test dependencies and the tests, and runs the full suite inside the image |
+| `runtime` (default) | The API: FastAPI on port 8000, one worker, health check. No test code, no test packages. The build tries to pre-download the model; if that fails it is downloaded at first start |
 
-The runtime image sets `CLASSIFIER=embedding`, `EMBEDDING_DEVICE=nnpa`, `EMBEDDING_DTYPE=float16` and `ETA_MODEL=xgboost`. It runs as the
-base image's non-root user. The image is s390x-only, so build it on the VM, not on an x86 machine.
+The runtime image sets `CLASSIFIER=embedding`, `EMBEDDING_DEVICE=nnpa`, `EMBEDDING_DTYPE=float16` and `ETA_MODEL=xgboost`, and runs as the
+base image's non-root user.
+
+### Web (`frontend/Dockerfile`)
+
+Multi-stage: a Node stage runs `npm ci` and `npm run build`, then only the static output is copied into `nginx:stable-alpine`. Node and
+the frontend's dev dependencies are not in the final image. Both base images are pinned by digest.
+
+It is built **on the CI runner** (or your machine), not on the VM: the Node stage is `FROM --platform=$BUILDPLATFORM`, so it runs
+natively on the builder, and the final stage only copies files, so `docker buildx build --platform linux/s390x` needs no emulation. The
+result is a genuine `linux/s390x` image, sent to the VM with `docker save | ssh ... docker load`. This keeps Node and Docker Hub off
+the VM's requirements: the VM pulls nothing from the internet for the web image.
+
+### Context hygiene
+
+The API's build context is an allowlist (`.dockerignore`: `backend/` and `contracts/openapi.json` only), and the deploy ships exactly
+that, taken from tracked files, so `.git`, `.env`, keys and the frontend can never reach a layer. No secrets are passed as build
+arguments or baked into either image.
 
 ## Deploy
 
-Pushes to `main` deploy automatically once the checks pass; see [ci-cd.md](ci-cd.md). To deploy by hand:
+Pushes to `main` deploy automatically once the checks pass ([ci-cd.md](ci-cd.md)). The deploy is
+[`scripts/deploy_vm.sh`](../scripts/deploy_vm.sh); CI runs the same script a developer can run by hand.
 
-**With the script** (copies the working tree, rebuilds, runs the tests, restarts the API, waits for health). Run it from a bash shell
-on your machine:
+| Step | Where | If it fails |
+|---|---|---|
+| Build the web image for `linux/s390x` | CI runner | Nothing was sent; nothing changed |
+| Pack the API build context | CI runner | Same |
+| Run the test suite in the s390x test image | VM | Stops; the running stack is not touched |
+| Build the API image, load the web image, check both are `s390x` | VM | Stops; the running stack is not touched |
+| `docker compose up -d --wait` with the new tag, then wait for `status: ok` through the web proxy and for `/` to serve the app | VM | The previous release is restored; the run fails |
+| Check both running containers carry the commit that was just built | VM | Same |
+| Record `DEPLOYED_TAG`, `DEPLOYED_REF`; delete images older than the previous release; delete the bundle | VM | |
+| Fetch `/api/v1/health` from the CI runner over the public address | CI runner | Warning only (usually a firewall, see below) |
+
+By hand (needs Docker with buildx on your machine, and bash):
 
 ```bash
 export VM_KEY="/path/to/private-key.pem" VM_HOST="linux1@<vm-ip>"
-bash scripts/deploy_vm.sh --dev        # your own test container; add --no-tests to skip the test image
-bash scripts/deploy_vm.sh --yes        # replaces the SHARED demo API; normally CI does this
+bash scripts/deploy_vm.sh --dev        # your own stack; add --no-tests to skip the test image
+bash scripts/deploy_vm.sh --yes        # replaces the SHARED stack; normally CI does this
 ```
 
-The key path and host come from your environment and are never stored in the repository.
-
-### Testing a branch on the VM without touching the demo
-
-`--dev` builds the working tree you run it from as a separate container, `dispatchz-dev`, published on VM port 8001, with its own
-images and source directory. It never touches `dispatchz-api`, its images or its `DEPLOYED_REF`, and it has the same rollback. This is
-the way to try something on the real hardware (the NNPA accelerator, XGBoost on s390x) from a feature branch.
+`--dev` builds the working tree you run it from as a separate Compose project, `dispatchz-dev`, with the web UI on VM port 8001 and the
+API on 9001, both bound to the VM's loopback, and its own images and directory. It never touches the shared stack, its images or its
+release records, and it has the same rollback. Reach it with a tunnel:
 
 ```bash
-bash scripts/deploy_vm.sh --dev
-ssh -i /path/to/private-key.pem -L 8001:localhost:8001 linux1@<vm-ip>     # then use http://localhost:8001
+ssh -i /path/to/private-key.pem -L 8001:localhost:8001 linux1@<vm-ip>      # then use http://localhost:8001
 ```
 
-Several people can each have a container: give each their own `DEV_NAME` and `DEV_PORT`, for example
-`DEV_NAME=alex DEV_PORT=8002 bash scripts/deploy_vm.sh --dev` gives `dispatchz-dev-alex` on port 8002. Remove a container you are done with
-(`docker rm -f dispatchz-dev`); the VM has about 7 GB of memory and each API loads its own model. Without `--dev` the script asks for
-confirmation (or `--yes`) before replacing the shared API, and refuses to run unattended without `--yes`. CI sets `CI=true` and is not asked.
+Several people can each have a stack: give each their own `DEV_NAME` and `DEV_PORT`, for example
+`DEV_NAME=alex DEV_PORT=8002 bash scripts/deploy_vm.sh --dev`. Remove one you are done with
+(`cd ~/dispatchz-dev && docker compose -p dispatchz-dev down`); the VM has about 7 GB of memory and each API loads its own model.
 
-**Manually**, on the VM, from the repository root:
+### What lives on the VM
 
-```bash
-docker build -f backend/Dockerfile --target test -t dispatchz-test . && docker run --rm dispatchz-test
-docker build -f backend/Dockerfile -t dispatchz-api .
-docker rm -f dispatchz-api 2>/dev/null
-docker run -d --name dispatchz-api -p 127.0.0.1:8000:8000 -e DEMO_MODE=true --restart unless-stopped dispatchz-api
+```text
+~/dispatchz/
+  compose.yml        the Compose file of the running release
+  .env               optional, hand-made, mode 600: WEB_PORT, WEB_BIND, DEMO_MODE (never written by CI)
+  DEPLOYED_TAG       image tag of the running release (the first 12 characters of the commit)
+  DEPLOYED_REF       the full commit of the running release
+  PREVIOUS_TAG       the release before it, kept as the rollback target
 ```
 
-Configuration is by environment variable; see [`.env.example`](../.env.example). To use a file: `docker run --env-file .env ...`.
+Nothing else: the source bundle is extracted into a temporary directory and removed when the script ends, whatever the outcome. The
+first deploy with this layout also removes the old copy of the repository that earlier versions of the script left in `~/dispatchz`,
+and the single `dispatchz-api` container they started.
+
+### Rollback and recovery
+
+- **Automatic:** a release that does not become healthy is replaced by `PREVIOUS_TAG`, using the previous `compose.yml`, and the run
+  fails. `DEPLOYED_TAG` and `DEPLOYED_REF` change only after the new release is healthy and verified, so they always name what is running.
+- **By hand**, to go back one release (the previous images are still on the VM):
+
+  ```bash
+  cd ~/dispatchz
+  DISPATCHZ_TAG="$(cat PREVIOUS_TAG)" docker compose -p dispatchz up -d --no-build --wait
+  ```
+
+  A manual rollback leaves the record files naming the newer release; the next deploy overwrites them.
+- **Older than one release back:** re-run the workflow for that commit from the Actions tab ("Run workflow" on `main` deploys the
+  current `main`; to deploy an older commit, revert on `main`).
+- **A short outage per deploy** is expected: Compose replaces the containers in place.
 
 ## Verify
 
+On the VM:
+
 ```bash
-curl -s localhost:8000/api/v1/health
-docker ps --format 'table {{.Names}}\t{{.Status}}'      # the API shows (healthy)
+cd ~/dispatchz
+docker compose -p dispatchz ps                     # both services "healthy"
+cat DEPLOYED_REF                                   # the commit that is running
+curl -s localhost/api/v1/health                    # through the web proxy
+curl -s localhost:8000/api/v1/health               # directly
 ```
 
 Expect `"architecture":"s390x"` and `"syntheticDataOnly":true`. The status reads `degraded` for the first seconds while the models
 load, then `ok`; the `inference` component names the classifier (including its backend, such as `+nnpa-float16`) and the ETA model.
 A suggestion's `modelVersion` also states the backend that produced it.
 
-## Access
+From your own computer, in a browser or with curl: `http://<vm-ip>/` should show the app and `http://<vm-ip>/api/v1/health` the JSON above.
 
-The API port is published on the VM's localhost only. From your machine, tunnel to it:
+## Public access
 
-```bash
-ssh -i /path/to/private-key.pem -L 8000:localhost:8000 linux1@<vm-ip>
-# then browse or curl http://localhost:8000
-```
+The web container is published on `0.0.0.0:80` over plain HTTP. Whether it is reachable from outside the VM depends on layers this
+repository cannot see or change:
+
+1. **Docker** publishes the port (done by `compose.yml`). Note that Docker inserts its own firewall rules, so `ufw` rules do not
+   block a published port; the check in step 3 is the only reliable one.
+2. **The VM's own firewall** (`sudo ufw status`, `sudo iptables -S`): allow port 80 if it is active, for example `sudo ufw allow 80/tcp`.
+3. **The cloud network in front of the VM.** The LinuxONE Community Cloud may filter inbound ports; IBM's own instructions open the
+   Jupyter port, so opening ports is possible, but how depends on your instance's configuration. If port 80 is closed there, either open it
+   or set `WEB_PORT` in `~/dispatchz/.env` to a port that is open (for example `WEB_PORT=8080`), run the deploy again, and set the
+   GitHub Actions variable `VM_WEB_PORT` to the same number so CI probes the right port.
+
+The CI deploy ends with a probe from the GitHub runner to `http://<vm-ip>:<port>/api/v1/health`. A green "Public URL reachable" in the
+run summary is the proof that a browser elsewhere can connect; a warning there means the stack is healthy but a network layer blocks it.
+
+### Security notes for the public listener
+
+- **This is a demo, not a hardened service.** Traffic is unencrypted HTTP, and the API's bearer tokens are fixed demo strings; the
+  dispatcher token is shipped inside the UI's JavaScript, so anyone who can reach the page can use the application and see its
+  (synthetic) data. Do not put real data in it.
+- The operator endpoint `POST /api/v1/admin/demo/reset` is **blocked at the proxy** (403), so the public cannot reset the demo even
+  with the well-known admin token. Operators reach it directly through the API's loopback port over an SSH tunnel
+  (`ssh -L 8000:localhost:8000 ...`, then `http://localhost:8000`).
+- The API container is not published beyond the VM's loopback, and there is no database to expose.
+- To restrict who can open the demo, the simplest controls are the VM or cloud firewall (allow only your addresses) or binding to
+  loopback (`WEB_BIND=127.0.0.1`) and using SSH tunnels only. HTTPS needs a domain name and a certificate (for example a Caddy or
+  certbot container in front of `web`); that is not set up.
+- The map UI calls Photon (geocoding) and Esri (tiles) from the visitor's browser, which sends those services the addresses typed in.
+  Synthetic data only.
+- IBM's Jupyter lab instructions open port 38888 to the internet with a default token, which allows remote code execution on the VM.
+  Change the token or restrict access.
+- Never commit keys or tokens. `.gitignore` excludes `*.pem` and `.env`; CI fails if a key file or `.env` is tracked.
 
 ## Evidence for the Datathon submission
 
@@ -113,30 +216,39 @@ torch and xgboost on s390x even though they are available through apt or IBM's i
 
 ## Verification status
 
+What has and has not been confirmed. Items marked "not yet" are implemented but need a first deploy of the Compose stack to the VM.
+
 | Check | Status |
 |---|---|
-| Image builds on the VM; tests pass in the image | Confirmed 2026-10-18 by the CI deploy: all 167 tests pass on s390x |
-| Container healthy, health reports `architecture: s390x` | Confirmed 2026-10-17, before the AI models became the default |
+| API image builds on the VM; tests pass in the image | Confirmed 2026-10-18 by the CI deploy: all 167 tests pass on s390x |
 | Classifier on NNPA fp16: parity and latency | Confirmed with `tools.classifier_eval` and `tools.nnpa_check` ([ai-pipeline.md](ai-pipeline.md#evaluation)) |
 | XGBoost ETA trains and evaluates on s390x | Confirmed with `tools.eta_eval` |
-| Review, unit-status, audit and SSE endpoints on the VM | Not yet confirmed (verified locally only) |
 | Running API reporting `+nnpa-float16` in health | Confirmed 2026-10-18: `granite-embedding-30m@9b5b096411+nnpa-float16`, `eta: xgboost-3.4.1-eta-synthetic-v1`, status `ok` |
-| `scripts/deploy_vm.sh` end to end | Confirmed 2026-10-18 (run by CI). Rollback confirmed on the VM the same day with a deliberately crashing build (restored the previous image, exit code 1, `DEPLOYED_REF` unchanged) |
-| Automatic deploy from GitHub Actions | Confirmed 2026-10-18: a push to `main` ran all checks, deployed to the VM in under a minute, and the container reported healthy |
-
-## Security notes
-
-- Never commit keys or tokens. `.gitignore` excludes `*.pem` and `.env`.
-- Do not publish port 8000 beyond localhost. The bearer tokens are fixed demo tokens, not authentication.
-- IBM's Jupyter lab instructions open port 38888 to the internet with a default token, which allows remote code execution on the VM.
-  Use an SSH tunnel instead, or change the token and restrict access.
+| Single-container deploy, rollback and CI deploy | Confirmed 2026-10-18 (the previous deployment method) |
+| Compose stack on the CI runner: web serves the app, proxy reaches the API, admin path blocked, proxy follows a recreated API | Checked by the `Containers` CI job, added with this change; first result pending |
+| Web image builds for `linux/s390x` | Checked by the `Containers` CI job (first result pending); not yet loaded and run on the VM |
+| `deploy_vm.sh` logic: two releases, tag/label verification, pruning, rollback of a crashing release | Confirmed 2026-10-18 against local Docker (x86, stock Python base) with `ssh` and `scp` stubbed; not on the VM |
+| Docker Compose plugin present on the VM | Not yet confirmed |
+| Compose stack deployed by CI and healthy on the VM; `DEPLOYED_REF` matches | Not yet confirmed |
+| Rollback of the Compose stack | Not yet exercised on the VM |
+| Port 80 reachable from the internet | Not yet confirmed; depends on the VM and cloud firewall (CI probes it on every deploy) |
+| Review, unit-status, audit and SSE endpoints on the VM, and the UI end to end through the proxy | Not yet confirmed (verified locally only) |
 
 ## Troubleshooting
 
-- **CRLF line endings.** A Windows checkout can leave carriage returns in shell scripts, the Dockerfile and env files, which breaks them
-  on Linux. `.gitattributes` forces LF for these, and the deploy script strips them on the VM.
-- **`degraded` health.** Models are still loading (first load takes 10 to 20 seconds) or a fallback is in use. Check `docker logs dispatchz-api`.
-- **Port 8000 already in use after the rename.** Deployments made before the project was renamed used the container name `responsematch-api`.
-  `scripts/deploy_vm.sh` removes it; to do it by hand, run `docker rm -f responsematch-api`. The old images (`responsematch-api`,
-  `responsematch-test`) and the `~/responsematch` directory are harmless and can be deleted.
+- **The deploy stops with "the Docker Compose plugin is missing".** On the VM: `sudo apt-get install -y docker-compose-v2`
+  (Ubuntu's package) or `docker-compose-plugin` from Docker's apt repository.
+- **The page is unreachable from outside but works on the VM** (`curl localhost`): a firewall; see [Public access](#public-access).
+- **The page loads, but the app shows errors or 502s.** The API is starting (models take 10 to 20 s) or crashed:
+  `docker compose -p dispatchz logs --tail 100 api`. nginx finds the API again by itself when the container is recreated.
+- **The event stream disconnects.** Anything between the browser and nginx that buffers or times out streaming responses (a corporate
+  proxy) can do this; the stream reconnects with `Last-Event-ID`. nginx itself is configured for unbuffered streams with a one-hour read timeout.
+- **Port 80 is already in use.** Another service holds it. Set `WEB_PORT` in `~/dispatchz/.env` and redeploy, and set `VM_WEB_PORT` in GitHub.
+- **Out of disk.** `docker system df`. A successful deploy already removes all but the last two releases; `docker image prune -a`
+  removes everything not in use (the next deploy rebuilds what it needs; the IBM base image is large to pull again).
+- **CRLF line endings.** A Windows checkout can leave carriage returns in shell scripts, Dockerfiles and env files, which breaks them on
+  Linux. `.gitattributes` forces LF for these, and the deploy script strips them on the VM.
+- **`degraded` health.** Models are still loading or a fallback is in use. Check `docker compose -p dispatchz logs api`.
 - **Build fails with a dependency conflict.** The pin step is working as designed; the API's requirements conflict with a package in IBM's image.
+- **Old leftovers from before the rename and before Compose** (`responsematch-*` containers and images, `~/responsematch`,
+  `dispatchz-api:latest`): the deploy removes the containers and the images it knows about; delete anything else by hand.
