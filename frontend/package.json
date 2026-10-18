@@ -15,7 +15,7 @@
   },
   "dependencies": {
     "leaflet": "^1.9.4",
-    "openapi-fetch": "^0.13.4"
+    "openapi-fetch": "^0.17.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.8",
