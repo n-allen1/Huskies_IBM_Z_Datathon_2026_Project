@@ -182,8 +182,8 @@ public address answered.
 
 ## Limitations and known risks
 
-- **Rollback of the Compose stack is untested.** The previous single-container rollback was tested on 2026-10-18 with a deliberately
-  crashing build. The Compose version has not run on the VM yet; do the same drill after the first successful Compose deploy.
+- **Rollback was exercised on the dev stack only.** On 2026-10-18 a deliberately crashing release deployed with `--dev` was rejected and the
+  previous release restored (details in [deployment.md](deployment.md#verification-status)). It has not run against the shared stack from CI.
 - **Pins go stale.** Pinned versions do not receive security fixes by themselves, and nothing updates them automatically (Dependabot was
   tried and removed: the project is a short event, and automatic version bumps near a deadline are risk without benefit). If the project
   continues, follow "Updating pinned versions" or re-add `.github/dependabot.yml` for the actions and frontend packages.

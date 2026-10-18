@@ -227,11 +227,11 @@ What has and has not been confirmed. Items marked "not yet" are implemented but 
 | Running API reporting `+nnpa-float16` in health | Confirmed 2026-10-18: `granite-embedding-30m@9b5b096411+nnpa-float16`, `eta: xgboost-3.4.1-eta-synthetic-v1`, status `ok` |
 | Single-container deploy, rollback and CI deploy | Confirmed 2026-10-18 (the previous deployment method) |
 | Compose stack on the CI runner: web serves the app, proxy reaches the API, admin path blocked, proxy follows a recreated API | Checked by the `Containers` CI job, added with this change; first result pending |
-| Web image builds for `linux/s390x` | Checked by the `Containers` CI job (first result pending); not yet loaded and run on the VM |
+| Web image builds for `linux/s390x`, loads and runs on the VM | Confirmed 2026-10-18: built on a Windows machine with no emulation, loaded on the VM, reported `s390x`, nginx healthy |
 | `deploy_vm.sh` logic: two releases, tag/label verification, pruning, rollback of a crashing release | Confirmed 2026-10-18 against local Docker (x86, stock Python base) with `ssh` and `scp` stubbed; not on the VM |
 | Docker Compose plugin present on the VM | Confirmed 2026-10-18: Compose v5.5.1, buildx v0.37.1 |
-| Compose stack deployed by CI and healthy on the VM; `DEPLOYED_REF` matches | Not yet confirmed |
-| Rollback of the Compose stack | Not yet exercised on the VM |
+| Compose stack deployed with `deploy_vm.sh --dev` and healthy on the VM; running containers carry the commit | Confirmed 2026-10-18: 499 tests passed on s390x, health `ok` with `+nnpa-float16` and XGBoost, app shell, SPA route, 401/200 token checks, `403` on the admin path, and an incident created through the proxy. The shared stack deployed by CI is not yet confirmed |
+| Rollback of the Compose stack | Confirmed 2026-10-18 on the dev stack with a deliberately crashing release: rejected, previous release restored and healthy, exit code 1, `DEPLOYED_TAG`/`DEPLOYED_REF` unchanged, the failed release's images removed |
 | Port 80 reachable from the internet | Confirmed 2026-10-18 with a throwaway nginx container published on `0.0.0.0:80` and requested from another network (HTTP 200); CI probes it on every deploy |
 | Review, unit-status, audit and SSE endpoints on the VM, and the UI end to end through the proxy | Not yet confirmed (verified locally only) |
 
