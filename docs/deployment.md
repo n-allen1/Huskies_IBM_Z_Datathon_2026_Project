@@ -104,7 +104,7 @@ torch and xgboost on s390x even though they are available through apt or IBM's i
 | XGBoost ETA trains and evaluates on s390x | Confirmed with `tools.eta_eval` |
 | Review, unit-status, audit and SSE endpoints on the VM | Not yet confirmed (verified locally only) |
 | Running API reporting `+nnpa-float16` in health | Confirmed 2026-10-18: `granite-embedding-30m@9b5b096411+nnpa-float16`, `eta: xgboost-3.4.1-eta-synthetic-v1`, status `ok` |
-| `scripts/deploy_vm.sh` end to end | Confirmed 2026-10-18 (run by CI). The failure and rollback paths were tested only against stubs, never on the VM |
+| `scripts/deploy_vm.sh` end to end | Confirmed 2026-10-18 (run by CI). Rollback confirmed on the VM the same day with a deliberately crashing build (restored the previous image, exit code 1, `DEPLOYED_REF` unchanged) |
 | Automatic deploy from GitHub Actions | Confirmed 2026-10-18: a push to `main` ran all checks, deployed to the VM in under a minute, and the container reported healthy |
 
 ## Security notes

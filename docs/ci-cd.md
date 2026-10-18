@@ -55,11 +55,12 @@ added by a human reviewer after the amendment is approved, not by the author to 
 2. Builds the `test` image on the VM and runs the whole suite there, on s390x with torch, xgboost and the Granite model.
 3. Builds the runtime image and keeps the previous one as `dispatchz-api:previous`.
 4. Replaces the container and waits up to two minutes for `GET /api/v1/health` to report `"status":"ok"`.
-5. If the build or the health check fails: exits non-zero, shows the container logs and starts the previous image again. If the
-   tests fail, the running container is not touched at all.
+5. If the build or the health check fails: exits non-zero, shows the container logs, points the `dispatchz-api` tag back at the
+   previous image and starts it. If the tests fail, the running container is not touched at all.
 
 The commit is recorded as the image label `org.opencontainers.image.revision` and in `~/dispatchz/DEPLOYED_REF` on the VM, so
-`docker inspect dispatchz-api` and `cat ~/dispatchz/DEPLOYED_REF` tell you which commit is running. Deploys never overlap: they
+`docker inspect dispatchz-api` and `cat ~/dispatchz/DEPLOYED_REF` tell you which commit is running. `DEPLOYED_REF` changes only after the new API
+is healthy, so after a rollback it still names the commit that is really running. Deploys never overlap: they
 share one concurrency group and queue instead of canceling each other.
 
 Where the deployed API can be reached is a separate decision; see [Seeing the deployment](#seeing-the-deployment).
@@ -127,6 +128,13 @@ What is still not pinned: the packages that come preinstalled on the GitHub runn
 which GitHub updates weekly inside the `ubuntu-24.04` label, and the npm dependencies of the Redocly CLI, which `npx` resolves from
 ranges. Both have been stable; if one ever breaks the contract job, pin it then.
 
+## Dependabot
+
+`.github/dependabot.yml` makes Dependabot open a pull request each Monday for a newer GitHub Action (the SHA and its version comment)
+or a newer frontend package, with at most three open at a time. Each one runs the full CI like any other PR and waits for a person to
+merge it; nothing updates by itself. Patch and minor frontend updates come as one PR, and major updates as their own. Dependabot cannot
+read `.github/pins/*.lock`, `backend/constraints.txt` or the Docker base image digest, so those follow the procedure below.
+
 ## Updating pinned versions
 
 Do these in a pull request. CI then runs the whole suite against the new versions before anything reaches `main`.
@@ -167,10 +175,10 @@ authentication, or a read-only demo mode), not something the pipeline should do 
 
 ## Limitations and known risks
 
-- **Rollback is untested on the VM.** The first run on GitHub (2026-10-18) passed every check and deployed to the VM, so the runner
-  can reach it. The failure and rollback paths were exercised only against stubbed `docker` and `curl`.
-- **Pins go stale.** Pinned versions do not receive security fixes by themselves. Review them before the final submission, and consider
-  Dependabot pull requests if the project continues.
+- **Rollback was tested once.** On 2026-10-18 a deliberately crashing build was deployed to the VM by hand: the script detected it
+  after two minutes, restored the previous image, exited non-zero, and `DEPLOYED_REF` kept naming the good commit. Not repeated from CI.
+- **Pins go stale.** Pinned versions do not receive security fixes by themselves. Dependabot (below) covers the actions and the frontend
+  packages; the Python locks, `constraints.txt` and the base image digest are updated by hand, so review them before the final submission.
 - **The runner must reach the VM.** GitHub-hosted runners connect to the VM's public SSH port. If the LinuxONE Community Cloud
   restricts inbound addresses, the deploy step fails at the `scp`; the fix is a self-hosted runner on a machine that can reach it.
 - **The VM can change.** Community Cloud instances are time-limited and a new one has a new address and host key. Update `VM_HOST`,
