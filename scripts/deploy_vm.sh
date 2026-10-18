@@ -27,7 +27,7 @@ tar -xzf ~/dispatchz.tgz -C ~/dispatchz
 cd ~/dispatchz
 echo "$2" > DEPLOYED_REF
 # Windows checkouts can leave CRLF behind; Docker and bash both choke on it.
-sed -i 's/\r$//' backend/Dockerfile .dockerignore backend/requirements*.txt scripts/*.sh
+sed -i 's/\r$//' backend/Dockerfile .dockerignore backend/requirements*.txt backend/constraints.txt scripts/*.sh
 
 if [ "$1" = tests ]; then
   echo "== tests (inside the image)"

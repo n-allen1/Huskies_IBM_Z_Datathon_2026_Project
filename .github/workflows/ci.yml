@@ -164,7 +164,7 @@ jobs:
 
       - name: Files that must be LF are LF in the index
         run: |
-          if git ls-files --eol -- '*.sh' backend/Dockerfile .dockerignore 'backend/requirements*.txt' .env.example | grep 'i/crlf'; then
+          if git ls-files --eol -- '*.sh' backend/Dockerfile .dockerignore 'backend/requirements*.txt' backend/constraints.txt '.github/pins/*' .env.example | grep 'i/crlf'; then
             echo "::error::CRLF line endings are committed; they break Docker and bash on the VM."; exit 1
           fi
           echo "clean"
