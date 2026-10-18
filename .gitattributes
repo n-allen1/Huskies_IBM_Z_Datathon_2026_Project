@@ -1,0 +1,7 @@
+# Scripts run on the Linux/LinuxONE VM; CRLF breaks them (bash reports `$'do\r'` syntax errors).
+*.sh text eol=lf
+# Read verbatim by Docker/pip tooling on Linux; a trailing CR corrupts patterns and RUN lines.
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+requirements*.txt text eol=lf
+.env.example text eol=lf
