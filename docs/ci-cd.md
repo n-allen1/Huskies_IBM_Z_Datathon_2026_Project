@@ -182,8 +182,9 @@ public address answered.
 
 ## Limitations and known risks
 
-- **Rollback was exercised on the dev stack only.** On 2026-10-18 a deliberately crashing release deployed with `--dev` was rejected and the
-  previous release restored (details in [deployment.md](deployment.md#verification-status)). It has not been run against the shared stack.
+- **Rollback has been drilled, not yet triggered by CI.** On 2026-10-18 a deliberately crashing release was deployed by hand to the dev stack and
+  to the shared stack; each was rejected and the previous release restored, with about 12 seconds of public downtime on the shared one
+  (details in [deployment.md](deployment.md#verification-status)). A real failure in a CI deploy takes the same path.
 - **Pins go stale.** Pinned versions do not receive security fixes by themselves, and nothing updates them automatically (Dependabot was
   tried and removed: the project is a short event, and automatic version bumps near a deadline are risk without benefit). If the project
   continues, follow "Updating pinned versions" or re-add `.github/dependabot.yml` for the actions and frontend packages.
