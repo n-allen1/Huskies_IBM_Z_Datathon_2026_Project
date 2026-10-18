@@ -1,0 +1,10 @@
+-r requirements.txt
+httpx
+pytest
+jsonschema
+openapi-spec-validator
+rfc3339-validator
+datamodel-code-generator
+
+# Local only: the LinuxONE image ships xgboost/numpy; tests that need them skip without it.
+xgboost

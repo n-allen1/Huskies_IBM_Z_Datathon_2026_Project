@@ -1,0 +1,5 @@
+-r requirements.txt
+httpx
+pytest
+jsonschema
+rfc3339-validator
