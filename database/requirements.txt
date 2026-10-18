@@ -1,0 +1,5 @@
+# Tooling for the database/ folder (Alembic migrations). The API itself needs only backend/requirements-postgres.txt.
+alembic>=1.13
+sqlalchemy>=2.0
+psycopg[binary]>=3.2
+python-dotenv>=1.0

@@ -28,7 +28,8 @@ def set_status(api, unit_id, status):
     """Test-only: flip a unit's status directly in the store (status events are a Phase 2 endpoint)."""
     store = api.client.app.state.services.store
     unit_id = UUID(unit_id)
-    store._units[unit_id] = store.get_unit(unit_id).model_copy(update={"status": UnitStatus(status)})
+    unit = store.get_unit(unit_id)
+    store.save_unit(unit.model_copy(update={"status": UnitStatus(status)}), unit.version or 1)
 
 
 # --- the safety invariant ----------------------------------------------------
@@ -127,7 +128,7 @@ def test_losing_the_only_hazmat_unit_is_reported_not_hidden(api, make_incident, 
 def test_unit_with_too_few_active_crew_is_ineligible(api, make_incident, units):
     store = api.client.app.state.services.store
     m1 = store.get_unit(UUID(units["M1"]["unitId"]))
-    store._units[m1.unitId] = m1.model_copy(update={"minimumCrew": 5})
+    store.save_unit(m1.model_copy(update={"minimumCrew": 5}), m1.version or 1)
     cands = by_sign(recommend(api, make_incident(confirm="medical_cardiac"), maxCandidates=50))
     assert not cands["M1"]["eligible"]
     assert any("Staffed 2 of 5" in r for r in cands["M1"]["ineligibleReasons"])

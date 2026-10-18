@@ -71,6 +71,11 @@ CAPABILITIES = [
 
 AGENCY_FIRE_EMS = stable_id("agency:fire-ems")
 AGENCY_SHERIFF = stable_id("agency:sheriff")
+# agency id -> (name, code); the Postgres seed needs a row for every agency the resources reference.
+AGENCIES = {
+    AGENCY_FIRE_EMS: ("County Fire and EMS (synthetic)", "FIRE-EMS"),
+    AGENCY_SHERIFF: ("County Sheriff (synthetic)", "SHERIFF"),
+}
 
 # station key -> (name, type, agency, lat, lon)
 STATIONS = {

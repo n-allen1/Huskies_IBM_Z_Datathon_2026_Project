@@ -3,6 +3,7 @@ drifts from the contract fails here, and every response is validated against the
 contract declares for that status (an undocumented status is a failure)."""
 
 import json
+import os
 import re
 import uuid
 from datetime import datetime, timezone
@@ -78,7 +79,18 @@ def settings():
 
 @pytest.fixture
 def app(settings):
-    return create_app(settings=settings, clock=lambda: NOW)
+    """In-memory store by default. TEST_STORE=postgres (with TEST_DATABASE_URL, a database migrated to head)
+    runs the same tests against PostgresStore; it is reset before every test, which wipes that database."""
+    if os.getenv("TEST_STORE") != "postgres":
+        yield create_app(settings=settings, clock=lambda: NOW)
+        return
+    from app.pg_store import PostgresStore
+    from app.seed_standin import build_seed
+
+    store = PostgresStore(os.environ["TEST_DATABASE_URL"], build_seed, lambda: NOW)
+    store.reset()
+    yield create_app(settings=settings, store=store, clock=lambda: NOW)
+    store.dispose()
 
 
 @pytest.fixture
