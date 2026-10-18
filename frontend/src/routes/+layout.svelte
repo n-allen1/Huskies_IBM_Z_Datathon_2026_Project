@@ -4,12 +4,53 @@
   import { page } from '$app/state';
   import { STALL_MS, live } from '$lib/live.svelte';
   import { ageText } from '$lib/ops';
+  import { resetDemoData } from '$lib/api/client';
+  import { DEMO_CONTROLS_KEY, DEMO_RESET_NOTE_KEY, demoControlsFrom } from '$lib/demo';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 
   let { children } = $props();
 
   let now = $state(Date.now());
 
+  // Demo controls: only in a tab opened with ?demo=1 (remembered for the tab), so visitors never see them.
+  let demoControls = $state(false);
+  let resetDialog = $state(false);
+  let resetBusy = $state(false);
+  let resetNote = $state<{ ok: boolean; text: string } | null>(null);
+  let resetNoteTimer: ReturnType<typeof setTimeout> | undefined;
+
+  async function resetDemo() {
+    resetBusy = true;
+    const result = await resetDemoData();
+    resetBusy = false;
+    resetDialog = false;
+    if (result.ok) {
+      // The seed has new incident ids, and the dispatch queue deliberately keeps what the operator was looking at, so start
+      // this tab from scratch. Other open tabs are told to refetch by the server (stream.resync_required).
+      try { sessionStorage.setItem(DEMO_RESET_NOTE_KEY, result.text); } catch { /* the note is a courtesy */ }
+      location.reload();
+      return;
+    }
+    resetNote = result;
+    clearTimeout(resetNoteTimer);
+    resetNoteTimer = setTimeout(() => (resetNote = null), 12000);
+  }
+
   onMount(() => {
+    try {
+      demoControls = demoControlsFrom(location.search, sessionStorage.getItem(DEMO_CONTROLS_KEY));
+      sessionStorage.setItem(DEMO_CONTROLS_KEY, demoControls ? '1' : '0');
+    } catch {
+      demoControls = demoControlsFrom(location.search, null); // storage blocked: honor the URL only
+    }
+    try {
+      const note = sessionStorage.getItem(DEMO_RESET_NOTE_KEY);
+      if (note) {
+        sessionStorage.removeItem(DEMO_RESET_NOTE_KEY);
+        resetNote = { ok: true, text: note };
+        resetNoteTimer = setTimeout(() => (resetNote = null), 6000);
+      }
+    } catch { /* storage blocked: no note */ }
     live.start();
     const t = setInterval(() => (now = Date.now()), 1000);
     return () => {
@@ -72,6 +113,18 @@
     </span>
 
     <div class="ml-auto flex items-center gap-4 text-xs">
+      {#if demoControls}
+        <div class="flex items-center gap-2">
+          {#if resetNote}
+            <span class="font-medium {resetNote.ok ? 'text-ok' : 'text-danger'}" role={resetNote.ok ? 'status' : 'alert'}>{resetNote.text}</span>
+          {/if}
+          <button
+            class="btn btn-sm border-warn/60 text-warn"
+            title="Demo only: discard every change and restore the seed data"
+            onclick={() => (resetDialog = true)}>DEMO · Reset data</button
+          >
+        </div>
+      {/if}
       <span class="font-mono text-sm text-muted" aria-label="Local time">{clock}</span>
       <p
         class="flex items-center gap-2 rounded-md border px-2.5 py-1 font-semibold
@@ -104,3 +157,8 @@
     {@render children()}
   </main>
 </div>
+
+<ConfirmDialog bind:open={resetDialog} title="Reset the demo data?" confirmText="Reset to seed data" danger busy={resetBusy} onConfirm={resetDemo}>
+  <p>Every incident, recommendation, decision and unit status change made since the demo started is discarded, and the original seed data is restored.</p>
+  <p class="mt-2">This affects everyone viewing this demo, not just this browser.</p>
+</ConfirmDialog>
