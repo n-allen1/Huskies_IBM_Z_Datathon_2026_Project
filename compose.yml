@@ -1,0 +1,42 @@
+# DispatchZ stack: the web UI (nginx) in front of the API. This one file serves the LinuxONE VM and local Docker.
+#
+# On the VM, scripts/deploy_vm.sh puts prebuilt, versioned images there and runs `docker compose up --no-build`; the build
+# sections below are for local use. Locally (x86), add compose.local.yml; see README.md, "Docker Compose".
+#
+# Settings come from the shell or a `.env` next to this file (see .env.example); every one has a default.
+name: dispatchz
+
+services:
+  api:
+    image: ${IMAGE_PREFIX:-dispatchz}-api:${DISPATCHZ_TAG:-local}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DEMO_MODE: ${DEMO_MODE:-true}
+    # Published on the host's loopback only, for operators (SSH tunnel, the deploy health check). Browsers reach the API
+    # through the web service. Nothing else listens: the API is not on a public port.
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8000}:8000"
+    # The image's own health check, polled faster so a deploy does not wait for the 30 s default.
+    healthcheck:
+      interval: 10s
+      start_period: 30s
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  web:
+    image: ${IMAGE_PREFIX:-dispatchz}-web:${DISPATCHZ_TAG:-local}
+    build:
+      context: frontend
+    restart: unless-stopped
+    depends_on:
+      - api
+    # The only public port. HTTP only until a domain and certificate exist.
+    ports:
+      - "${WEB_BIND:-0.0.0.0}:${WEB_PORT:-80}:80"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

@@ -28,13 +28,14 @@ AI only suggests a category and orders eligible units by ETA; it can never make 
 | Implemented | Multi-incident allocation: when incidents contest the same units, an exact solver decides who gets which, highest priority first ([details](docs/ai-pipeline.md#multi-incident-allocation)) |
 | Implemented | Human review with override reasons, simulated assignment, stale-recommendation invalidation |
 | Implemented | Docker image for IBM LinuxONE, configured to run the embedding model on the Telum NNPA accelerator in fp16 ([measurements](docs/ai-pipeline.md#evaluation)) |
-| In progress | Web UI (branch `feature/Frontend`, not merged) |
+| Implemented | Web UI (SvelteKit): incident intake with map location, dispatch board with live updates, recommendation review |
+| Implemented | Containerized deployment: nginx serves the UI and proxies the API; both run as a Docker Compose stack on LinuxONE, deployed by CI on every push to `main` ([details](docs/deployment.md)) |
 | Implemented | Optional PostgreSQL persistence (`STORE=postgres`; schema in [`database/`](database/), see [development.md](docs/development.md#running-against-postgresql)). The default store is in memory |
 | Planned | Demand forecasting and staffing-gap analysis, leadership reports, road-network routing |
 
 ## Quick Start
 
-**Prerequisites:** Python 3.12, Git. Node.js 22 for the frontend and contract tools. Docker only for the LinuxONE image.
+**Prerequisites:** Python 3.12, Git. Node.js 22 for the frontend and contract tools. Docker (with Compose) only for the container stack.
 
 ```bash
 git clone https://github.com/n-allen1/ibmz-datathon-2026.git
@@ -68,10 +69,9 @@ A request without a token returns `401`.
 
 The remaining commands run from the repository root (`cd ..` if you are still in `backend/`).
 
-**Web UI** (branch `feature/Frontend`; not yet on `main`):
+**Web UI** (development server with hot reload):
 
 ```bash
-git fetch origin && git switch feature/Frontend
 cd frontend && npm install && cp .env.example .env
 # set VITE_API_TARGET=http://localhost:8000 in .env to use the backend (the default is the Prism mock on :4010)
 npm run dev                                # http://localhost:5173
@@ -80,14 +80,91 @@ npm run dev                                # http://localhost:5173
 **Contract viewer and mock server:** `bash scripts/mock.sh` serves a Prism mock on `:4010` and the Swagger viewer at
 `http://localhost:8080/swagger.html`.
 
-**LinuxONE:** the image is built and run on the VM; see [docs/deployment.md](docs/deployment.md). In short:
+### Docker Compose
+
+The same `compose.yml` runs the whole stack (web UI + API) locally and on the VM. Locally, `compose.local.yml` swaps IBM's s390x
+image for a stock Python image, so the API uses its rule-based fallbacks (the PyTorch, NNPA and XGBoost paths run only on LinuxONE).
 
 ```bash
-export VM_KEY="/path/to/private-key.pem" VM_HOST="linux1@<vm-ip>"
-bash scripts/deploy_vm.sh --dev     # your own test container on the VM; the shared demo API is untouched
+cp .env.example .env                       # then set WEB_PORT=8080 and WEB_BIND=127.0.0.1 in .env
+docker compose -f compose.yml -f compose.local.yml up --build -d     # http://localhost:8080
+docker compose -f compose.yml -f compose.local.yml ps                # both services should become "healthy"
+docker compose -f compose.yml -f compose.local.yml logs -f api       # follow the API log (use "web" for nginx)
+docker compose -f compose.yml -f compose.local.yml down              # stop and remove the containers
 ```
 
-The shared demo API is deployed by CI when a pull request is merged to `main` ([docs/ci-cd.md](docs/ci-cd.md)).
+Set `COMPOSE_FILE=compose.yml:compose.local.yml` (`;` instead of `:` on Windows) to drop the `-f` flags. The API is also on
+`http://localhost:8000` (loopback only). Build the images without starting them: `docker compose -f compose.yml -f compose.local.yml build`.
+
+## Deployment on LinuxONE
+
+A push to `main` runs the checks and then deploys the stack to the VM; nothing is copied by hand.
+
+```mermaid
+flowchart LR
+    DEV["git push to main"] --> CI["GitHub Actions<br/>contract, backend, frontend,<br/>container smoke test, hygiene"]
+    CI -->|"web image built for s390x<br/>+ API build context only"| VM
+    subgraph VM["LinuxONE VM: ~/dispatchz"]
+        T["tests in the s390x image"] --> B["build API image"] --> U["docker compose up<br/>tagged with the commit"]
+        U --> H{"healthy and<br/>running this commit?"}
+        H -->|no| RB["restore the previous release"]
+    end
+    H -->|yes| LIVE["http://VM-IP/"]
+```
+
+- **What is shipped:** the web image (built on the CI runner for `linux/s390x`, so no Node on the VM) and the files the API image is
+  built from (`backend/`, the contract, `compose.yml`). Not shipped: `.git`, `docs/`, the frontend sources, scripts, `.env`. The bundle
+  is deleted after the build.
+- **What stays on the VM:** `~/dispatchz/` holds only `compose.yml`, `.env` (optional, created by hand) and the release records
+  `DEPLOYED_TAG`, `DEPLOYED_REF`, `PREVIOUS_TAG`. Images are tagged with the commit; the running release and the one before it are
+  kept, older ones are deleted.
+- **Failure handling:** failing tests or builds stop before anything running is touched. A release that does not become healthy is
+  replaced by the previous one and the CI run fails.
+- **Public access:** the browser reaches only the web container (port 80, HTTP). The API, on the internal network, is published only on
+  the VM's loopback. See [docs/deployment.md](docs/deployment.md#public-access) for the firewall and security notes.
+
+Operating the VM (SSH in first; `~/dispatchz` is the project directory):
+
+```bash
+cd ~/dispatchz
+docker compose -p dispatchz ps                         # status and health
+docker compose -p dispatchz logs -f api                # API log ("web" for nginx)
+cat DEPLOYED_REF                                       # the commit that is running
+docker compose -p dispatchz stop                       # stop (start again with: start); "down" removes the containers
+```
+
+Manual deploy from your machine (needs Docker with buildx locally): `bash scripts/deploy_vm.sh --dev` gives you a private stack on the
+VM (web on port 8001, localhost only, reachable through an SSH tunnel) and never touches the shared one. See
+[docs/deployment.md](docs/deployment.md).
+
+### Configuration
+
+No secrets are needed to run the stack today (the store is in memory and the bearer tokens are fixed demo tokens). Nothing secret is
+baked into an image or committed. Variables, all optional (`.env.example` has the full list):
+
+| Variable | Where | Default | Meaning |
+|---|---|---|---|
+| `WEB_PORT` | `~/dispatchz/.env` or shell | `80` | Port the web UI is published on |
+| `WEB_BIND` | same | `0.0.0.0` | Address it binds to (`127.0.0.1` keeps it local) |
+| `API_HOST_PORT` | same | `8000` | The API's loopback-only port on the host |
+| `DEMO_MODE` | same | `true` in the stack | Enables the demo reset endpoint on the API |
+| `VM_SSH_KEY`, `VM_HOST`, `VM_KNOWN_HOSTS` | GitHub Actions secrets | none | How CI reaches the VM ([docs/ci-cd.md](docs/ci-cd.md)) |
+| `VM_WEB_PORT` | GitHub Actions variable | `80` | Port CI probes from outside to confirm public access |
+
+The browser never needs an API URL: it calls `/api/...` on the same origin it loaded the page from, and nginx forwards it to the API
+container. Nothing in the UI points at `localhost`.
+
+### Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| The page does not load from your computer, but `curl localhost` works on the VM | The VM's firewall or the cloud network blocks port 80: [Public access](docs/deployment.md#public-access) |
+| The page loads, API calls return 502 | The API is still starting (models load for 10 to 20 s) or crashed: `docker compose -p dispatchz logs api` |
+| CI deploy fails at `docker compose` | The Compose plugin is missing on the VM: `sudo apt-get install -y docker-compose-v2` |
+| A deploy "rolled back" | Read the failing run's log: it prints the new release's container logs before restoring the old one |
+| Disk full on the VM | `docker system df`; `docker image prune -a` removes unused images (the next deploy rebuilds what it needs) |
+
+More in [docs/deployment.md](docs/deployment.md#troubleshooting).
 
 ## Technology stack
 
@@ -98,7 +175,9 @@ The shared demo API is deployed by CI when a pull request is merged to `main` ([
 | AI | XGBoost | ETA estimation | Direct (in the LinuxONE image) |
 | Platform | IBM LinuxONE (s390x, z/VM), Docker, `torch_nnpa` | Runtime and NNPA accelerator | External platform |
 | Contract | OpenAPI 3.1, Prism, Swagger UI | Contract-first development, mock, viewer | Development tool |
-| Frontend | SvelteKit, Svelte 5, Vite, Tailwind, Leaflet | Dispatcher UI (branch) | Direct dependency |
+| Frontend | SvelteKit, Svelte 5, Vite, Tailwind, Leaflet | Dispatcher UI (static build) | Direct dependency |
+| Web server | nginx | Serves the UI and proxies `/api` to the API | Container base image |
+| Containers | Docker, Docker Compose | Run the web and API services together | Platform tool |
 | Maps | Photon (OpenStreetMap) and Esri tiles | Geocoding and basemap, called by the browser; demo data only | External service |
 | Database | PostgreSQL, Alembic | Optional persistence for the API (`STORE=postgres`) | Optional |
 
@@ -108,13 +187,14 @@ Versions and the full list are in [`backend/requirements*.txt`](backend/requirem
 
 ```mermaid
 flowchart LR
-    subgraph Z["IBM LinuxONE VM: s390x, Docker"]
-        API["DispatchZ API<br/>FastAPI"] --> RULES["Rules engine<br/>eligibility and ranking"]
+    UI["Browser<br/>Web UI"] -->|"HTTP :80"| WEB
+    subgraph Z["IBM LinuxONE VM: s390x, Docker Compose"]
+        WEB["web container<br/>nginx: static UI and /api proxy"] -->|"internal network"| API
+        API["api container<br/>DispatchZ API, FastAPI"] --> RULES["Rules engine<br/>eligibility and ranking"]
         API --> CLS["Classifier<br/>PyTorch and Granite 30M<br/>NNPA fp16"]
         RULES --> ETA["ETA model<br/>XGBoost"]
         API --> STORE[("Store: in memory (default)<br/>or PostgreSQL<br/>synthetic data")]
     end
-    UI["Web UI<br/>branch feature/Frontend"] -->|"REST and SSE"| API
 ```
 
 Everything inside the box runs on LinuxONE. More detail and the processing flowchart are in
@@ -128,7 +208,8 @@ Everything inside the box runs on LinuxONE. More detail and the processing flowc
 ├── contracts/        openapi.json (source of truth) and swagger.html (viewer)
 ├── database/         PostgreSQL schema (Alembic migrations) and the Seattle demo seed script; used by the API with `STORE=postgres`
 ├── docs/             architecture, development, deployment, ci-cd, ai-pipeline, open-source, MVP plan
-├── frontend/         generated API types on main; the UI is on branch feature/Frontend
+├── frontend/         SvelteKit web UI, Dockerfile (nginx image), nginx.conf
+├── compose.yml       web + API stack (VM and local); compose.local.yml is the x86 override
 ├── .github/          CI/CD workflow (checks and deploy)
 ├── scripts/          gen_openapi.py, check_contract.py, regen_types.sh, mock.sh, deploy_vm.sh, check_platform.sh
 ├── .env.example      configuration variables
@@ -168,7 +249,7 @@ prerequisite AI labs.
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Components, system and processing diagrams, decision logic, lifecycles, persistence status |
 | [docs/development.md](docs/development.md) | Local setup, tests, demo data, frontend, contract workflow, conventions |
-| [docs/deployment.md](docs/deployment.md) | LinuxONE environment, Docker image, deploy and verify, verification status |
+| [docs/deployment.md](docs/deployment.md) | LinuxONE environment, images and Compose stack, deploy, public access, rollback, verification status |
 | [docs/ci-cd.md](docs/ci-cd.md) | GitHub Actions pipeline: checks, automatic deploy to the VM, one-time setup, branch protection |
 | [docs/ai-pipeline.md](docs/ai-pipeline.md) | Classifier and ETA model, safety properties, evaluation, NNPA results, planned AI |
 | [docs/open-source.md](docs/open-source.md) | Open-source components and attribution |
