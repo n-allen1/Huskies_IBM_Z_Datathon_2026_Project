@@ -128,13 +128,6 @@ What is still not pinned: the packages that come preinstalled on the GitHub runn
 which GitHub updates weekly inside the `ubuntu-24.04` label, and the npm dependencies of the Redocly CLI, which `npx` resolves from
 ranges. Both have been stable; if one ever breaks the contract job, pin it then.
 
-## Dependabot
-
-`.github/dependabot.yml` makes Dependabot open a pull request each Monday for a newer GitHub Action (the SHA and its version comment)
-or a newer frontend package, with at most three open at a time. Each one runs the full CI like any other PR and waits for a person to
-merge it; nothing updates by itself. Patch and minor frontend updates come as one PR, and major updates as their own. Dependabot cannot
-read `.github/pins/*.lock`, `backend/constraints.txt` or the Docker base image digest, so those follow the procedure below.
-
 ## Updating pinned versions
 
 Do these in a pull request. CI then runs the whole suite against the new versions before anything reaches `main`.
@@ -177,8 +170,9 @@ authentication, or a read-only demo mode), not something the pipeline should do 
 
 - **Rollback was tested once.** On 2026-10-18 a deliberately crashing build was deployed to the VM by hand: the script detected it
   after two minutes, restored the previous image, exited non-zero, and `DEPLOYED_REF` kept naming the good commit. Not repeated from CI.
-- **Pins go stale.** Pinned versions do not receive security fixes by themselves. Dependabot (below) covers the actions and the frontend
-  packages; the Python locks, `constraints.txt` and the base image digest are updated by hand, so review them before the final submission.
+- **Pins go stale.** Pinned versions do not receive security fixes by themselves, and nothing updates them automatically (Dependabot was
+  tried and removed: the project is a short event, and automatic version bumps near a deadline are risk without benefit). If the project
+  continues, follow "Updating pinned versions" or re-add `.github/dependabot.yml` for the actions and frontend packages.
 - **The runner must reach the VM.** GitHub-hosted runners connect to the VM's public SSH port. If the LinuxONE Community Cloud
   restricts inbound addresses, the deploy step fails at the `scp`; the fix is a self-hosted runner on a machine that can reach it.
 - **The VM can change.** Community Cloud instances are time-limited and a new one has a new address and host key. Update `VM_HOST`,
