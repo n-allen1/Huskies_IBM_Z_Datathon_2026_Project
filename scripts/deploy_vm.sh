@@ -73,9 +73,11 @@ upload=".dispatchz-upload-$dir"
 
 echo "== target: $project, release $tag (commit $ref)"
 echo "== building the web image for linux/s390x"
-# The tar goes through a pipe, not a file path, so this also works from Git Bash on Windows (docker.exe cannot read /tmp paths).
-docker buildx build --platform linux/s390x --label "org.opencontainers.image.revision=$ref" \
-  -t "$prefix-web:$tag" --output "type=docker,dest=-" frontend | gzip -1 > "$work/web.tar.gz"
+# Built into the local daemon and exported with `docker save`: unlike `--output type=docker`, that also works with the default
+# builder on a GitHub runner. The tar goes through a pipe, not a file path, so it works from Git Bash on Windows too.
+docker buildx build --platform linux/s390x --load --label "org.opencontainers.image.revision=$ref" -t "$prefix-web:$tag" frontend
+docker save "$prefix-web:$tag" | gzip -1 > "$work/web.tar.gz"
+docker rmi "$prefix-web:$tag" > /dev/null 2>&1 || true
 
 echo "== packing the API build context (tracked files only)"
 git ls-files -z -co --exclude-standard -- backend contracts/openapi.json compose.yml .dockerignore \

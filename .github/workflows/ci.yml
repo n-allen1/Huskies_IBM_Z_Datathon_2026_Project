@@ -184,9 +184,17 @@ jobs:
         if: failure()
         run: docker compose -f compose.yml -f compose.local.yml logs --tail 80
 
-      - name: Web image builds for the VM (linux/s390x)
-        # The Node stage runs natively on this runner and the final stage only copies files, so no emulation is involved.
-        run: docker buildx build --platform linux/s390x -t dispatchz-web:s390x frontend
+      - name: Web image for the VM (linux/s390x) builds, exports and loads
+        # The deploy script's exact path. The Node stage runs natively on this runner and the final stage only copies files, so
+        # no emulation is involved.
+        run: |
+          docker buildx build --platform linux/s390x --load -t dispatchz-web:s390x frontend
+          docker save dispatchz-web:s390x | gzip -1 > web.tar.gz
+          docker rmi dispatchz-web:s390x
+          gunzip -c web.tar.gz | docker load
+          arch="$(docker image inspect -f '{{.Architecture}}' dispatchz-web:s390x)"
+          echo "loaded image architecture: $arch"
+          [ "$arch" = s390x ]
 
   hygiene:
     name: Repository hygiene
