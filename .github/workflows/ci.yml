@@ -1,7 +1,7 @@
 name: CI/CD
 
 # Every pull request and every push to main is validated. A push to main that passes every job is then deployed to the
-# LinuxONE VM. See docs/ci-cd.md.
+# LinuxONE VM as a container stack (web UI + API). See docs/ci-cd.md.
 on:
   pull_request:
     # labeled/unlabeled so the contract-approved label re-runs the contract gate.
@@ -143,6 +143,75 @@ jobs:
         if: steps.detect.outputs.present == 'true'
         run: npm run build
 
+  containers:
+    name: Containers
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      # compose.yml is the same file the VM runs. Here the API sits on a stock Python image (compose.local.yml), because IBM's
+      # s390x image cannot run on this x86 runner; the web image, nginx config and proxying are exactly what is deployed.
+      - name: Start the stack
+        run: |
+          export WEB_BIND=0.0.0.0 WEB_PORT=8080
+          docker compose -f compose.yml -f compose.local.yml up -d --build --wait --wait-timeout 300
+
+      - name: Check the app through the proxy
+        run: |
+          base=http://127.0.0.1:8080
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          curl -fsS "$base/healthz"
+          # Into variables, not `curl | grep -q`: grep exiting early makes curl fail.
+          page="$(curl -fsS "$base/")"; grep -qi '<html' <<< "$page"
+          page="$(curl -fsS "$base/dispatch")"; grep -qi '<html' <<< "$page"   # unknown paths get the single-page app shell
+          curl -fsS "$base/api/v1/health"; echo
+          [ "$(code "$base/api/v1/resources/units?limit=1")" = 401 ]
+          [ "$(code -H 'Authorization: Bearer demo-dispatcher' "$base/api/v1/resources/units?limit=1")" = 200 ]
+          # Operator endpoints are not reachable through the public listener, even with an admin token.
+          [ "$(code -X POST -H 'Authorization: Bearer demo-admin' "$base/api/v1/admin/demo/reset")" = 403 ]
+
+      - name: The UI renders over plain HTTP on a non-loopback address
+        # Browsers expose some APIs (crypto.randomUUID, for one) only in secure contexts: HTTPS or localhost. The VM is served over
+        # plain HTTP from its IP address, so a page that uses one while initializing is blank there but fine on localhost and in
+        # unit tests. Chrome treats this runner's own address the same way, so render the pages through it.
+        run: |
+          ip="$(hostname -I | awk '{print $1}')"
+          for page in dispatch intake; do
+            timeout 120 google-chrome --headless=new --no-sandbox --disable-gpu --virtual-time-budget=15000               --enable-logging=stderr --v=0 --dump-dom "http://${ip}:8080/${page}" > "dom_${page}.html" 2> "chrome_${page}.log" || true
+            if ! grep -q '<header' "dom_${page}.html" || grep -q 'Uncaught' "chrome_${page}.log"; then
+              echo "::error::/${page} did not render over plain HTTP on a non-loopback address."
+              grep CONSOLE "chrome_${page}.log" | head -5
+              exit 1
+            fi
+            echo "/${page} rendered"
+          done
+
+      - name: The proxy follows a recreated API container
+        # Every deploy recreates the API container with a new address; nginx must not keep the old one.
+        run: |
+          docker compose -f compose.yml -f compose.local.yml up -d --no-build --force-recreate --no-deps --wait --wait-timeout 120 api
+          for _ in $(seq 1 20); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/health)" = 200 ] && exit 0
+            sleep 2
+          done
+          echo "::error::The proxy did not reach the recreated API container."; exit 1
+
+      - name: Container logs
+        if: failure()
+        run: docker compose -f compose.yml -f compose.local.yml logs --tail 80
+
+      - name: Web image for the VM (linux/s390x) builds, exports and loads
+        # The deploy script's exact path. The Node stage runs natively on this runner and the final stage only copies files, so
+        # no emulation is involved.
+        run: |
+          docker buildx build --platform linux/s390x --load -t dispatchz-web:s390x frontend
+          docker save dispatchz-web:s390x | gzip -1 > web.tar.gz
+          docker rmi dispatchz-web:s390x
+          gunzip -c web.tar.gz | docker load
+          arch="$(docker image inspect -f '{{.Architecture}}' dispatchz-web:s390x)"
+          echo "loaded image architecture: $arch"
+          [ "$arch" = s390x ]
+
   hygiene:
     name: Repository hygiene
     runs-on: ubuntu-24.04
@@ -164,7 +233,7 @@ jobs:
 
       - name: Files that must be LF are LF in the index
         run: |
-          if git ls-files --eol -- '*.sh' backend/Dockerfile .dockerignore 'backend/requirements*.txt' backend/constraints.txt '.github/pins/*' .env.example | grep 'i/crlf'; then
+          if git ls-files --eol -- '*.sh' '*Dockerfile' '.dockerignore' '*.conf' 'compose*.yml' 'backend/requirements*.txt' backend/constraints.txt '.github/pins/*' .env.example | grep 'i/crlf'; then
             echo "::error::CRLF line endings are committed; they break Docker and bash on the VM."; exit 1
           fi
           echo "clean"
@@ -172,7 +241,7 @@ jobs:
   deploy:
     name: Deploy to LinuxONE
     # Runs only after every check above passed, and only for main. Pull requests never deploy.
-    needs: [contract, backend, frontend, hygiene]
+    needs: [contract, backend, frontend, containers, hygiene]
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
@@ -200,7 +269,7 @@ jobs:
             echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Deploy (tests run on the VM, then the container is replaced)
+      - name: Deploy (images are built, tests run on the VM, then the stack is replaced)
         if: steps.config.outputs.configured == 'true'
         env:
           VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
@@ -217,6 +286,32 @@ jobs:
           (umask 077 && printf '%s\n' "$VM_SSH_KEY" | tr -d '\r' > "$VM_KEY")
           if [ -n "$VM_KNOWN_HOSTS" ]; then printf '%s\n' "$VM_KNOWN_HOSTS" | tr -d '\r' >> ~/.ssh/known_hosts; fi
           bash scripts/deploy_vm.sh 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+
+      - name: Check the public URL from outside the VM
+        # The runner is not on the VM's network, so this is what a browser elsewhere sees. If it fails the deploy itself is fine
+        # (the VM already verified the stack); the usual cause is a firewall rule. Warns instead of failing so a network setting
+        # cannot mark a good deploy as broken. The address is derived from a secret and deliberately never printed.
+        if: steps.config.outputs.configured == 'true'
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          WEB_PORT: ${{ vars.VM_WEB_PORT || '80' }}
+        shell: bash
+        run: |
+          host="${VM_HOST#*@}"
+          status=000
+          for _ in $(seq 1 10); do
+            status="$(curl -s -o /dev/null --max-time 10 -w '%{http_code}' "http://${host}:${WEB_PORT}/api/v1/health" || true)"
+            [ "$status" = 200 ] && break
+            sleep 3
+          done
+          if [ "$status" = 200 ]; then
+            echo "### Public URL reachable" >> "$GITHUB_STEP_SUMMARY"
+            echo "The app answered over HTTP on port ${WEB_PORT} from outside the VM." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::The stack is healthy on the VM but http://<vm>:${WEB_PORT}/ did not answer from the internet (last status ${status}). Open the port in the VM's firewall; see docs/deployment.md, Public access."
+            echo "### Public URL NOT reachable" >> "$GITHUB_STEP_SUMMARY"
+            echo "Healthy on the VM, but port ${WEB_PORT} did not answer from the internet (status ${status}). See docs/deployment.md, Public access." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Summary
         if: steps.config.outputs.configured == 'true'

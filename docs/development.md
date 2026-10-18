@@ -106,10 +106,10 @@ technical-rescue unit, 5 ambulances, 2 patrol cars), 30 crew members, 11 capabil
 
 ## Frontend
 
-The UI lives on branch `feature/Frontend` and is not merged to `main` yet. It is SvelteKit 2 with Svelte 5, Vite, Tailwind and Leaflet.
+The UI is SvelteKit 2 with Svelte 5, Vite, Tailwind and Leaflet, built as a static single-page app. In production it is served by
+nginx in the `web` container (see [deployment.md](deployment.md)); in development the Vite server proxies `/api`.
 
 ```bash
-git fetch origin && git switch feature/Frontend
 cd frontend
 npm install
 cp .env.example .env            # then set VITE_API_TARGET (below)
@@ -120,8 +120,8 @@ npm run dev                     # http://localhost:5173
 backend). Other scripts: `npm run check` (type check), `npm test` (unit tests), `npm run build` (static build), and
 `npm run mock:fixtures` (a stateful fixture server on port 4011 with a working event stream; not tested for this document).
 
-Verified on that branch: `npm install`, `npm run check` (0 errors), `npm test` (28 passed), `npm run build`, and the dev server proxying
-`/api` to a running backend. Full UI flows against this backend have not been tested end to end.
+To run the production containers locally instead of the dev server, use Docker Compose (README, "Docker Compose"):
+`docker compose -f compose.yml -f compose.local.yml up --build -d`.
 
 ## Contract-first workflow
 

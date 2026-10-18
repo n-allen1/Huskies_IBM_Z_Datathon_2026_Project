@@ -7,3 +7,6 @@ requirements*.txt text eol=lf
 .env.example text eol=lf
 constraints.txt text eol=lf
 .github/pins/* text eol=lf
+# Compose files and the nginx config are read by Docker on Linux.
+*.yml text eol=lf
+*.conf text eol=lf

@@ -1,0 +1,16 @@
+# Local (x86 or Apple silicon) override: the API on a stock Python image instead of IBM's s390x ML image.
+#   docker compose -f compose.yml -f compose.local.yml up --build
+# The API then uses its rule-based fallbacks (keyword classifier, straight-line ETA), exactly like `pytest` and a local
+# `uvicorn`. The PyTorch, Granite, NNPA and XGBoost paths run only on the LinuxONE VM.
+services:
+  api:
+    build:
+      args:
+        BASE_IMAGE: python:3.12-slim
+        PYTHON: python
+        REQUIRE_ML: "false"
+    environment:
+      CLASSIFIER: keyword
+      EMBEDDING_DEVICE: cpu
+      EMBEDDING_DTYPE: float32
+      ETA_MODEL: haversine
