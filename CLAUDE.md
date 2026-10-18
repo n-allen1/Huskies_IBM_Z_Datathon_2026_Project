@@ -56,7 +56,7 @@ Verification is **not** authorization; passing checks never replace human approv
 - Lint/validate the spec when tooling exists (e.g. `npx @redocly/cli lint contracts/openapi.json` or Spectral).
 - Spec-diff against the last approved commit when tooling exists (e.g. `oasdiff breaking` / `oasdiff changelog`).
 - Run contract-driven tests against the Prism mock (`http://localhost:4010`) and/or schema-validate real responses against the spec.
-- Recommended CI (not yet configured): lint + oasdiff on PRs, and a CODEOWNERS rule requiring human review of `contracts/openapi.json`.
+- CI is configured (`.github/workflows/ci.yml`, see `docs/ci-cd.md`). It validates the contract, checks that it still equals the `scripts/gen_openapi.py` output, lints it with Redocly, and fails any pull request that changes the contract or the generator unless a human reviewer has added the `contract-approved` label. Run the same check locally with `python scripts/check_contract.py`. Still not configured: `oasdiff` on PRs and a CODEOWNERS rule requiring human review of `contracts/openapi.json`.
 
 ### End-of-task report (for any API-related task)
 

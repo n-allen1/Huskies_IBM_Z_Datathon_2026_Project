@@ -125,9 +125,10 @@ Everything inside the box runs on LinuxONE; the dotted link is planned. More det
 ├── backend/          FastAPI service: app/, tests/, tools/, Dockerfile, requirements*.txt
 ├── contracts/        openapi.json (source of truth) and swagger.html (viewer)
 ├── database/         PostgreSQL schema (Alembic) and seed script; not yet connected
-├── docs/             architecture, development, deployment, ai-pipeline, open-source, MVP plan
+├── docs/             architecture, development, deployment, ci-cd, ai-pipeline, open-source, MVP plan
 ├── frontend/         generated API types on main; the UI is on branch feature/Frontend
-├── scripts/          gen_openapi.py, regen_types.sh, mock.sh, deploy_vm.sh, check_platform.sh
+├── .github/          CI/CD workflow (checks and deploy)
+├── scripts/          gen_openapi.py, check_contract.py, regen_types.sh, mock.sh, deploy_vm.sh, check_platform.sh
 ├── .env.example      configuration variables
 └── CLAUDE.md         contributor rules: contract governance and commit style
 ```
@@ -166,6 +167,7 @@ prerequisite AI labs.
 | [docs/architecture.md](docs/architecture.md) | Components, system and processing diagrams, decision logic, lifecycles, persistence status |
 | [docs/development.md](docs/development.md) | Local setup, tests, demo data, frontend, contract workflow, conventions |
 | [docs/deployment.md](docs/deployment.md) | LinuxONE environment, Docker image, deploy and verify, verification status |
+| [docs/ci-cd.md](docs/ci-cd.md) | GitHub Actions pipeline: checks, automatic deploy to the VM, one-time setup, branch protection |
 | [docs/ai-pipeline.md](docs/ai-pipeline.md) | Classifier and ETA model, safety properties, evaluation, NNPA results, planned AI |
 | [docs/open-source.md](docs/open-source.md) | Open-source components and attribution |
 | [docs/mvp-plan.md](docs/mvp-plan.md) | Original 24-hour scope and endpoint tiers (planning document) |

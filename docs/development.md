@@ -100,7 +100,7 @@ and is treated as a contract source: change the generator, then regenerate, afte
 
 | Task | Command |
 |---|---|
-| Validate the contract | `python -m openapi_spec_validator contracts/openapi.json` |
+| Validate the contract and check it still equals the generator output | `python scripts/check_contract.py` (CI runs this; also `python -m openapi_spec_validator contracts/openapi.json`) |
 | Regenerate the contract (needs approval) | `python scripts/gen_openapi.py contracts/openapi.json` |
 | Regenerate Python models and TypeScript types | `bash scripts/regen_types.sh` (needs `pip install -r backend/requirements-dev.txt` and Node) |
 | Mock server and Swagger viewer | `bash scripts/mock.sh`: Prism on `:4010`, viewer at `http://localhost:8080/swagger.html` (loads Swagger UI from a CDN) |

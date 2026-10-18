@@ -1,0 +1,229 @@
+name: CI/CD
+
+# Every pull request and every push to main is validated. A push to main that passes every job is then deployed to the
+# LinuxONE VM. See docs/ci-cd.md.
+on:
+  pull_request:
+    # labeled/unlabeled so the contract-approved label re-runs the contract gate.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Superseded pull request runs are wasted work; a run on main is never canceled (it may be a deploy).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+
+jobs:
+  contract:
+    name: OpenAPI contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Validate and check for drift from the generator
+        run: |
+          pip install openapi-spec-validator
+          python scripts/check_contract.py
+
+      - name: Lint with Redocly
+        # Errors fail the job. The "unused component" warnings are expected: SSE payload schemas are not referenced by a response.
+        run: npx --yes @redocly/cli@2.64.1 lint contracts/openapi.json
+
+      - name: Require approval to change the contract
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'contract-approved') }}
+        run: |
+          changed="$(git diff --name-only "origin/${BASE_REF}...HEAD" -- contracts/openapi.json scripts/gen_openapi.py)"
+          if [ -z "$changed" ]; then
+            echo "The contract and its generator are unchanged."
+            exit 0
+          fi
+          echo "Changed contract files:"; echo "$changed"
+          if [ "$APPROVED" != "true" ]; then
+            echo "::error::This PR changes the API contract. CLAUDE.md requires explicit human approval first. After a reviewer has approved the amendment, they add the 'contract-approved' label."
+            exit 1
+          fi
+          echo "Contract change carries the contract-approved label."
+
+  backend:
+    name: Backend tests (${{ matrix.deps }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # "minimal" is a clean checkout without xgboost (the ETA tests skip, the model degrades to straight-line);
+        # "full" installs xgboost so the ETA model tests run too. Torch is not installed: its tests skip, and the
+        # Granite and NNPA paths are tested on the VM during deploy.
+        deps: [minimal, full]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install
+        run: |
+          pip install -r backend/requirements-test.txt ruff
+          if [ "${{ matrix.deps }}" = full ]; then pip install xgboost; fi
+
+      - name: Lint (syntax errors and undefined names)
+        run: ruff check --select E9,F63,F7,F82,F811 backend scripts
+
+      - name: Test
+        working-directory: backend
+        run: python -m pytest -q -ra
+
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v6
+
+      # The web UI lives on feature/Frontend until it is merged; once frontend/ exists on a branch, these steps start running.
+      - name: Detect the frontend
+        id: detect
+        working-directory: .
+        run: |
+          if [ -f frontend/package.json ]; then echo "present=true" >> "$GITHUB_OUTPUT"
+          else echo "present=false" >> "$GITHUB_OUTPUT"; echo "::notice::No frontend/package.json on this branch; skipping the frontend checks."; fi
+
+      - uses: actions/setup-node@v6
+        if: steps.detect.outputs.present == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        if: steps.detect.outputs.present == 'true'
+        run: npm ci
+
+      - name: Generated API types match the contract
+        if: steps.detect.outputs.present == 'true'
+        run: |
+          npm run gen:types
+          git diff --exit-code -- src/lib/api/schema.d.ts || { echo "::error::frontend/src/lib/api/schema.d.ts is stale. Run scripts/regen_types.sh and commit the result."; exit 1; }
+
+      - name: Type check
+        if: steps.detect.outputs.present == 'true'
+        run: npm run check
+
+      - name: Unit tests
+        if: steps.detect.outputs.present == 'true'
+        run: npm test
+
+      - name: Build
+        if: steps.detect.outputs.present == 'true'
+        run: npm run build
+
+  hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Shell scripts parse
+        run: for f in scripts/*.sh; do bash -n "$f" && echo "ok $f"; done
+
+      - name: No secrets or key files are committed
+        run: |
+          if git ls-files | grep -Ei '\.(pem|key|p12|pfx)$|(^|/)\.env$'; then
+            echo "::error::A key file or .env is tracked."; exit 1
+          fi
+          if git grep -nE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' -- . ':!.github/workflows/ci.yml'; then
+            echo "::error::A private key is committed."; exit 1
+          fi
+          echo "clean"
+
+      - name: Files that must be LF are LF in the index
+        run: |
+          if git ls-files --eol -- '*.sh' backend/Dockerfile .dockerignore 'backend/requirements*.txt' .env.example | grep 'i/crlf'; then
+            echo "::error::CRLF line endings are committed; they break Docker and bash on the VM."; exit 1
+          fi
+          echo "clean"
+
+  deploy:
+    name: Deploy to LinuxONE
+    # Runs only after every check above passed, and only for main. Pull requests never deploy.
+    needs: [contract, backend, frontend, hygiene]
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: linuxone
+    concurrency:
+      group: deploy-linuxone
+      cancel-in-progress: false
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check deploy configuration
+        id: config
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+        run: |
+          if [ -z "$VM_SSH_KEY" ] || [ -z "$VM_HOST" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Deploy skipped: the VM_SSH_KEY and VM_HOST secrets are not set. See docs/ci-cd.md."
+            echo "### Deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "The \`VM_SSH_KEY\` and \`VM_HOST\` secrets are not configured, so nothing was deployed. See docs/ci-cd.md." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy (tests run on the VM, then the container is replaced)
+        if: steps.config.outputs.configured == 'true'
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_HOST: ${{ secrets.VM_HOST }}
+          # Optional. Output of `ssh-keyscan -t ed25519 <vm-ip>`, taken once from a trusted network. Without it the first
+          # connection trusts the host key it sees.
+          VM_KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}
+          DEPLOY_REF: ${{ github.sha }}
+        # Explicit shell so that pipefail is on: a failed deploy must fail the job even though its output goes through tee.
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          export VM_KEY="$RUNNER_TEMP/vm_key"
+          (umask 077 && printf '%s\n' "$VM_SSH_KEY" | tr -d '\r' > "$VM_KEY")
+          if [ -n "$VM_KNOWN_HOSTS" ]; then printf '%s\n' "$VM_KNOWN_HOSTS" | tr -d '\r' >> ~/.ssh/known_hosts; fi
+          bash scripts/deploy_vm.sh 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+
+      - name: Summary
+        if: steps.config.outputs.configured == 'true'
+        run: |
+          {
+            echo "### Deployed \`${GITHUB_SHA::7}\` to the LinuxONE VM"
+            echo '```'
+            tail -n 8 "$RUNNER_TEMP/deploy.log"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vm_key"

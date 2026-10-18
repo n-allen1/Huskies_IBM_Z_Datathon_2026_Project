@@ -36,6 +36,8 @@ base image's non-root user. The image is s390x-only, so build it on the VM, not 
 
 ## Deploy
 
+Pushes to `main` deploy automatically once the checks pass; see [ci-cd.md](ci-cd.md). To deploy by hand:
+
 **With the script** (copies the working tree, rebuilds, runs the tests, restarts the API, waits for health). Run it from a bash shell
 on your machine:
 
@@ -102,7 +104,8 @@ torch and xgboost on s390x even though they are available through apt or IBM's i
 | XGBoost ETA trains and evaluates on s390x | Confirmed with `tools.eta_eval` |
 | Review, unit-status, audit and SSE endpoints on the VM | Not yet confirmed (verified locally only) |
 | Running API reporting `+nnpa-float16` in health | Not yet confirmed |
-| `scripts/deploy_vm.sh` end to end | Not confirmed; its readiness check was fixed on 2026-10-18 |
+| `scripts/deploy_vm.sh` end to end | Not confirmed; its readiness check was fixed on 2026-10-18, and it now fails and rolls back when the build or health check fails (tested only against stubs) |
+| Automatic deploy from GitHub Actions | Not yet run; needs the secrets in [ci-cd.md](ci-cd.md#one-time-setup-a-repository-admin-does-this) |
 
 ## Security notes
 
