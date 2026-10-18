@@ -43,10 +43,27 @@ on your machine:
 
 ```bash
 export VM_KEY="/path/to/private-key.pem" VM_HOST="linux1@<vm-ip>"
-bash scripts/deploy_vm.sh              # add --no-tests to skip the test image
+bash scripts/deploy_vm.sh --dev        # your own test container; add --no-tests to skip the test image
+bash scripts/deploy_vm.sh --yes        # replaces the SHARED demo API; normally CI does this
 ```
 
 The key path and host come from your environment and are never stored in the repository.
+
+### Testing a branch on the VM without touching the demo
+
+`--dev` builds the working tree you run it from as a separate container, `dispatchz-dev`, published on VM port 8001, with its own
+images and source directory. It never touches `dispatchz-api`, its images or its `DEPLOYED_REF`, and it has the same rollback. This is
+the way to try something on the real hardware (the NNPA accelerator, XGBoost on s390x) from a feature branch.
+
+```bash
+bash scripts/deploy_vm.sh --dev
+ssh -i /path/to/private-key.pem -L 8001:localhost:8001 linux1@<vm-ip>     # then use http://localhost:8001
+```
+
+Several people can each have a container: give each their own `DEV_NAME` and `DEV_PORT`, for example
+`DEV_NAME=alex DEV_PORT=8002 bash scripts/deploy_vm.sh --dev` gives `dispatchz-dev-alex` on port 8002. Remove a container you are done with
+(`docker rm -f dispatchz-dev`); the VM has about 7 GB of memory and each API loads its own model. Without `--dev` the script asks for
+confirmation (or `--yes`) before replacing the shared API, and refuses to run unattended without `--yes`. CI sets `CI=true` and is not asked.
 
 **Manually**, on the VM, from the repository root:
 

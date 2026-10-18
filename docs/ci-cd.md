@@ -49,7 +49,8 @@ added by a human reviewer after the amendment is approved, not by the author to 
 
 ## Deploy
 
-[`scripts/deploy_vm.sh`](../scripts/deploy_vm.sh) is the same script a developer runs by hand. In CI it:
+[`scripts/deploy_vm.sh`](../scripts/deploy_vm.sh) is the same script a developer runs by hand (with `--dev` it builds a separate test container; see
+[deployment.md](deployment.md#testing-a-branch-on-the-vm-without-touching-the-demo)). In CI it:
 
 1. Copies the checked-out commit to the VM over SSH.
 2. Builds the `test` image on the VM and runs the whole suite there, on s390x with torch, xgboost and the Granite model.
@@ -137,8 +138,8 @@ Do these in a pull request. CI then runs the whole suite against the new version
   `git ls-remote --tags https://github.com/actions/checkout 'refs/tags/v6*'` (for an annotated tag use the SHA on the `^{}` line).
 - **A CI Python package:** edit `.github/pins/minimal.in` or `full.in`, run `pip install uv==0.13.1` and `python scripts/lock_ci.py`,
   and commit the changed `.lock` files. The script resolves for Linux and Python 3.12 whatever machine you run it on.
-- **A package on the VM (for example FastAPI):** edit `backend/constraints.txt`, then run `bash scripts/deploy_vm.sh` from a branch
-  or read the PR's CI result after merge; the Docker build and the 167 tests on s390x are the real check. Run `scripts/lock_ci.py`
+- **A package on the VM (for example FastAPI):** edit `backend/constraints.txt`, then try it from your branch with
+  `bash scripts/deploy_vm.sh --dev` (it does not touch the demo) or read the PR's CI result; the Docker build and the 167 tests on s390x are the real check. Run `scripts/lock_ci.py`
   too, because the CI locks are resolved against that file.
 - **IBM's base image:** on the VM, `docker pull` the new image, read its digest with
   `docker image inspect --format '{{index .RepoDigests 0}}' <image>`, put it in the Dockerfile, refresh
