@@ -41,7 +41,9 @@
   );
 </script>
 
-<div class="flex h-screen flex-col bg-app">
+<!-- overflow-clip, not hidden: nothing may make the document taller than the viewport, and a clipped box
+     is not a scroll container, so focusing or typing in a panel can only scroll that panel, never the app shell. -->
+<div class="flex h-screen flex-col overflow-clip bg-app">
   <header class="flex h-12 shrink-0 items-center gap-4 border-b border-line bg-panel px-3">
     <a href="/dispatch" class="flex items-center gap-2 rounded-md pr-1 text-[0.95rem] font-semibold tracking-tight">
       <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" class="text-accent">
