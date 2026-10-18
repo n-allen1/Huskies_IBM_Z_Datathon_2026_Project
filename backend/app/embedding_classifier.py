@@ -26,72 +26,136 @@ MODEL_ID = "ibm-granite/granite-embedding-30m-english"
 MODEL_REVISION = "9b5b096411652ec1189c68fcfb90d0a82c5b45af"
 
 _C = IncidentCategory
-# Short example descriptions per category, written for this project. Not training data.
+# Short example descriptions per category, written for this project. Not training data. Each category has tidy descriptions and
+# first-person caller phrasings (people do not talk like a report). `other` is the explicit "non-emergency or unclear" class:
+# a call that matches it best gets no suggestion, instead of relying only on a high similarity bar to decline.
 PROTOTYPES: dict[IncidentCategory, list[str]] = {
     _C.structure_fire: [
         "a house is on fire with flames and heavy smoke coming from the roof",
         "apartment building fire, residents evacuating, smoke in the hallway",
         "kitchen fire spreading to the walls of a home",
+        "our house is on fire, flames in the windows, please hurry",
+        "theres a fire in the building next door and i can see smoke and flames",
+        "something is burning inside the apartment and smoke is filling the hallway",
+        "smoke is pouring out of the roof of a house down the street",
     ],
     _C.vehicle_fire: [
         "a car is burning on the side of the road",
         "truck engine caught fire and is fully engulfed",
         "vehicle fire in a parking lot",
+        "my car is on fire",
+        "a truck is burning on the road with black smoke and flames from the engine",
+        "a vehicle is on fire and nobody is inside it",
+        "flames coming from under the hood of a car",
     ],
     _C.wildland_fire: [
         "grass fire spreading across a field toward homes",
         "brush fire on a hillside with wind pushing it",
         "wildfire smoke visible near the forest",
+        "the grass is on fire and spreading with the wind",
+        "fire in the trees and brush with lots of smoke",
+        "a field is burning and getting close to some houses",
+        "smoke and flames on the hills, looks like a forest fire",
     ],
     _C.medical_cardiac: [
         "man has chest pain and is sweating, possible heart attack",
         "patient collapsed, not breathing, no pulse",
         "unresponsive person, cardiac arrest, CPR needed",
+        "he has chest pain that goes down his arm and is sweating",
+        "she passed out and is not breathing, we are doing CPR",
+        "a man collapsed and is not responding, no heartbeat",
+        "heart attack, crushing pain in the chest, cannot catch breath",
     ],
     _C.medical_trauma: [
         "person fell from a ladder with a serious head injury",
         "gunshot or stab wound with heavy bleeding",
         "severe injury with a broken leg after a fall",
+        "he fell and is bleeding badly from his head",
+        "his leg is broken, the bone is sticking out and he is in a lot of pain",
+        "someone was shot or stabbed and is bleeding a lot",
+        "a bad fall, cannot move, heavy bleeding",
     ],
     _C.medical_other: [
         "elderly person feels dizzy and weak and needs an ambulance",
         "child with a high fever and vomiting",
         "seizure, diabetic emergency or suspected overdose",
+        "she is very sick, dizzy and weak and cannot get up",
+        "my baby has a high fever and keeps throwing up",
+        "someone is having a seizure on the floor, shaking and unresponsive",
+        "an overdose or allergic reaction, drowsy or swelling, needs an ambulance",
     ],
     _C.traffic_collision: [
         "two cars collided at an intersection",
         "vehicle rolled over on the highway with people inside",
         "motorcycle crash with injuries on the road",
+        "two cars crashed and people are hurt",
+        "car accident on the highway, vehicles damaged, someone injured",
+        "a car hit a pole and the driver is stuck inside",
+        "a motorcycle or bike was hit by a car and the rider is down in the road",
     ],
     _C.technical_rescue: [
         "worker trapped in a trench after a collapse",
         "person stuck in a confined space or fallen into a well",
         "hiker stranded on a cliff needing a rope rescue",
+        "someone is trapped and cannot get out, we need a rescue",
+        "a person is pinned under something heavy that collapsed",
+        "fell into a hole or pit and is stuck, cannot climb out",
+        "stranded in a dangerous spot, cannot climb up or down",
     ],
     _C.hazmat: [
         "chemical spill with strong fumes at a warehouse",
         "natural gas leak smell inside a building",
         "toxic substance leaking from a tanker truck",
+        "strong chemical smell and people are getting sick and coughing",
+        "something is leaking and spilling and there are fumes in the air",
+        "a gas leak, it smells strongly of gas inside",
+        "a spill of an unknown liquid with a strong smell",
     ],
     _C.assault: [
         "someone is being beaten in a fight outside a bar",
         "a person was attacked and injured by an assailant",
         "armed assault in progress",
+        "a guy is hitting another person right now, there is a fight",
+        "i was punched and attacked and he is still here",
+        "someone is being beaten up outside",
+        "a man with a weapon attacked someone and ran away",
     ],
     _C.burglary: [
         "someone broke into my house while we were out",
         "intruder trying to enter through a window at night",
         "store was burglarized and the door forced open",
+        "someone is breaking into a house right now",
+        "we came home and the door was kicked in and things are missing",
+        "a thief smashed the window of a shop and took things",
+        "i hear someone inside who should not be there",
     ],
     _C.domestic_disturbance: [
         "loud yelling and things breaking next door, a couple arguing",
         "domestic dispute between family members",
         "neighbor reports violence in an apartment",
+        "the neighbors are screaming at each other and throwing things",
+        "a man is yelling at his wife and she sounds scared",
+        "my partner is angry and will not let me leave, a loud argument",
+        "a family fight in the house with shouting and things breaking",
     ],
     _C.welfare_check: [
         "please check on an elderly neighbor who has not been seen for days",
         "worried relative asks for a welfare check",
         "person not answering the door, concerned about their well-being",
+        "i have not heard from my elderly parent in days, please check on them",
+        "my neighbor has not come out for a long time and i am worried",
+        "can someone go check on a relative who is not answering the phone",
+        "please make sure my friend is ok, i am concerned about them",
+    ],
+    _C.other: [
+        "a non-emergency question or request for information",
+        "a noise complaint or parking problem, nothing urgent",
+        "a wrong number, a test call, or someone just checking the line",
+        "a lost item, a broken street light or a road maintenance problem",
+        "i need help but do not say what is wrong",
+        "a general complaint about a neighbor, an animal or a nuisance",
+        "asking about permits, office hours or how to file a report",
+        "a vague or unclear call with no description of an emergency",
     ],
 }
 
@@ -106,9 +170,10 @@ def _dot(a: list[float], b: list[float]) -> float:
 
 
 class EmbeddingClassifier:
-    def __init__(self, encoder: Encoder, *, min_similarity: float = 0.30, temperature: float = 0.05):
+    def __init__(self, encoder: Encoder, *, min_similarity: float = 0.30, min_margin: float = 0.0, temperature: float = 0.05):
         self._encoder = encoder
         self._min_similarity = min_similarity
+        self._min_margin = min_margin
         self._temperature = temperature
         self._lock = threading.Lock()
         self._prototypes: list[tuple[IncidentCategory, list[float]]] | None = None
@@ -159,8 +224,21 @@ class EmbeddingClassifier:
             f"Most similar to the example descriptions of '{top.value}' ({top_sim:.2f}); runner-up '{runner_up.value}' ({runner_sim:.2f}).",
             "The score is an uncalibrated similarity measure, not a probability; no priority is suggested.",
         ]
-        if top_sim < self._min_similarity:
-            notes.append(f"Best similarity is below {self._min_similarity:.2f}: no category is suggested.")
+        if top is IncidentCategory.other:
+            notes.append("Closest to a non-emergency or unclear call: no category is suggested.")
+            return ClassificationResult(
+                category=IncidentCategory.other, source=ClassificationSource.ml_inferred,
+                model_version=self.model_version, confidence=None, limitations=notes, top_similarity=top_sim,
+                margin=top_sim - runner_sim,
+            )
+        if top_sim < self._min_similarity or top_sim - runner_sim < self._min_margin:
+            if top_sim < self._min_similarity:
+                notes.append(f"Best similarity is below {self._min_similarity:.2f}: no category is suggested.")
+            else:
+                notes.append(
+                    f"'{top.value}' leads '{runner_up.value}' by only {top_sim - runner_sim:.3f} (less than {self._min_margin:.2f}): "
+                    "too close to call, so no category is suggested."
+                )
             return ClassificationResult(
                 category=IncidentCategory.other, source=ClassificationSource.ml_inferred,
                 model_version=self.model_version, confidence=None, limitations=notes, top_similarity=top_sim,

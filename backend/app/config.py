@@ -28,6 +28,7 @@ class Settings:
     # Below this top similarity the model suggests no category. Chosen on dev set A and verified on held-out set B
     # (tools/classifier_eval.py): at >= 0.74 all 18 suggestions were correct on each set; 0.75 adds a safety buffer.
     embedding_min_similarity: float = 0.75
+    embedding_min_margin: float = 0.02
     # "haversine" (straight-line) or "xgboost" (trained at start-up on synthetic travel times, straight-line fallback).
     eta_model: str = "haversine"
 
@@ -41,5 +42,6 @@ class Settings:
             embedding_device=os.getenv("EMBEDDING_DEVICE", "cpu").lower(),
             embedding_dtype=os.getenv("EMBEDDING_DTYPE", "float32").lower(),
             embedding_min_similarity=float(os.getenv("EMBEDDING_MIN_SIMILARITY", "0.75")),
+            embedding_min_margin=float(os.getenv("EMBEDDING_MIN_MARGIN", "0.02")),
             eta_model=os.getenv("ETA_MODEL", "haversine").lower(),
         )

@@ -29,7 +29,9 @@ def _default_classifier(settings: Settings) -> Classifier:
     if settings.classifier == "embedding":
         encoder = GraniteEncoder(device=settings.embedding_device, dtype=settings.embedding_dtype)
         return FallbackClassifier(
-            EmbeddingClassifier(encoder, min_similarity=settings.embedding_min_similarity), KeywordClassifier()
+            EmbeddingClassifier(
+                encoder, min_similarity=settings.embedding_min_similarity, min_margin=settings.embedding_min_margin
+            ), KeywordClassifier()
         )
     return KeywordClassifier()
 
