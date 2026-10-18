@@ -48,7 +48,7 @@
         <path d="M10 1.5 18 6v8l-8 4.5L2 14V6z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" />
         <circle cx="10" cy="10" r="2.4" fill="currentColor" />
       </svg>
-      ResponseMatch
+      DispatchZ
     </a>
     <nav aria-label="Main" class="flex gap-0.5">
       {#each nav as n}
@@ -63,10 +63,10 @@
 
     <span
       class="ml-2 inline-flex items-center gap-1.5 rounded border border-warn/60 bg-warn-soft px-2 py-0.5 text-[0.7rem] font-semibold tracking-wide text-warn"
-      title="ResponseMatch is decision support: no real dispatch orders are issued."
+      title="DispatchZ is decision support: no real dispatch orders are issued."
     >
       ▲ SYNTHETIC DATA · SIMULATION ONLY
-      <span class="sr-only">ResponseMatch is decision support: no real dispatch orders are issued.</span>
+      <span class="sr-only">DispatchZ is decision support: no real dispatch orders are issued.</span>
     </span>
 
     <div class="ml-auto flex items-center gap-4 text-xs">
