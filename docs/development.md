@@ -23,7 +23,9 @@ cd backend
 python -m pytest -q
 ```
 
-Expect `166 passed, 15 skipped` (5 skipped tests need the optional `xgboost` package, and 10 need a PostgreSQL database, see below). Run the API:
+Expect `338 passed, 171 skipped` with only the test requirements. The skipped tests need the optional `xgboost` and `scipy` packages
+(the exact multi-incident solver and the ETA model) or a PostgreSQL database (see below); with `pip install -r backend/requirements-dev.txt`,
+only the 10 PostgreSQL tests skip (`499 passed, 10 skipped`). Run the API:
 
 ```bash
 DEMO_MODE=true python -m uvicorn app.main:app --port 8000        # PowerShell: $env:DEMO_MODE="true"; python -m uvicorn ...

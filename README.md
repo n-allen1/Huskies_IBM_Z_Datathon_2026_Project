@@ -25,11 +25,12 @@ AI only suggests a category and orders eligible units by ETA; it can never make 
 | Implemented | Incident classification suggestion with a pretrained PyTorch model (IBM Granite Embedding 30M), human confirmation, keyword fallback |
 | Implemented | Hard eligibility from unit status, staffing, crew credentials and equipment readiness; explainable ranking |
 | Implemented | ETA estimation with XGBoost (trained on synthetic data), straight-line fallback |
+| Implemented | Multi-incident allocation: when incidents contest the same units, an exact solver decides who gets which, highest priority first ([details](docs/ai-pipeline.md#multi-incident-allocation)) |
 | Implemented | Human review with override reasons, simulated assignment, stale-recommendation invalidation |
 | Implemented | Docker image for IBM LinuxONE, configured to run the embedding model on the Telum NNPA accelerator in fp16 ([measurements](docs/ai-pipeline.md#evaluation)) |
 | In progress | Web UI (branch `feature/Frontend`, not merged) |
 | Implemented | Optional PostgreSQL persistence (`STORE=postgres`; schema in [`database/`](database/), see [development.md](docs/development.md#running-against-postgresql)). The default store is in memory |
-| Planned | Demand forecasting and staffing-gap analysis, leadership reports, multi-incident optimization, road-network routing |
+| Planned | Demand forecasting and staffing-gap analysis, leadership reports, road-network routing |
 
 ## Quick Start
 
@@ -44,7 +45,7 @@ python -m venv .venv
 source .venv/bin/activate                  # Windows PowerShell: .venv\Scripts\Activate.ps1
 pip install -r backend/requirements-test.txt
 cd backend
-python -m pytest -q                        # 162 passed, 5 skipped (167 with the optional xgboost package)
+python -m pytest -q                        # 332 passed, 161 skipped (493 with the optional xgboost and scipy packages)
 DEMO_MODE=true python -m uvicorn app.main:app --port 8000     # PowerShell: $env:DEMO_MODE="true"; python -m uvicorn ...
 ```
 
@@ -83,8 +84,10 @@ npm run dev                                # http://localhost:5173
 
 ```bash
 export VM_KEY="/path/to/private-key.pem" VM_HOST="linux1@<vm-ip>"
-bash scripts/deploy_vm.sh
+bash scripts/deploy_vm.sh --dev     # your own test container on the VM; the shared demo API is untouched
 ```
+
+The shared demo API is deployed by CI when a pull request is merged to `main` ([docs/ci-cd.md](docs/ci-cd.md)).
 
 ## Technology stack
 

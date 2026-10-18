@@ -46,9 +46,33 @@ def ready_classifier(encoder=None) -> tuple[FallbackClassifier, EmbeddingClassif
     return FallbackClassifier(ml, KeywordClassifier()), ml, encoder
 
 
-def test_prototypes_cover_every_category_except_other():
-    assert set(PROTOTYPES) == set(IncidentCategory) - {IncidentCategory.other}
+def test_every_category_has_examples_and_other_is_the_explicit_decline_class():
+    assert set(PROTOTYPES) == set(IncidentCategory)
     assert all(len(texts) >= 2 for texts in PROTOTYPES.values())
+    # Real categories carry caller-voice phrasings as well as tidy descriptions; `other` is the "non-emergency or unclear" class.
+    assert all(len(texts) >= 5 for c, texts in PROTOTYPES.items() if c is not IncidentCategory.other)
+
+
+def test_matching_the_non_emergency_class_declines_even_at_high_similarity():
+    _, ml, _ = ready_classifier()
+    r = ml.classify(PROTOTYPES[IncidentCategory.other][1])  # word-for-word one of the "other" examples: similarity ~1.0
+    assert r.category == IncidentCategory.other and r.confidence is None
+    assert r.top_similarity > 0.99
+    assert any("non-emergency or unclear" in line for line in r.limitations)
+
+
+def test_a_close_call_between_two_categories_is_declined_when_a_margin_is_required():
+    # Without a required margin the nearest example wins; with one, a narrow lead over the runner-up is "too close to call".
+    text = "fire in the trees and brush, heart attack, crushing pain in the chest"  # mixes two categories' examples
+    _, loose, _ = ready_classifier()
+    close = loose.classify(text)
+    assert close.category != IncidentCategory.other and close.margin < 0.2
+    strict = EmbeddingClassifier(FakeEncoder(), min_margin=close.margin + 0.01)
+    strict.warm_up()
+    declined = strict.classify(text)
+    assert declined.category == IncidentCategory.other and declined.confidence is None
+    assert any("too close to call" in line for line in declined.limitations)
+    assert strict.classify("my car is on fire").category == IncidentCategory.vehicle_fire  # a clear call is unaffected
 
 
 @pytest.mark.parametrize("text,expected", [
