@@ -22,7 +22,7 @@ schemas = {}
 # ---------- shared ----------
 schemas["Provenance"] = obj({
     "dataOrigin": enum("synthetic", "public_historical", "simulated", "user_entered", "model_generated"),
-    "sourceSystem": s(examples=["responsematch-seed-v1"]),
+    "sourceSystem": s(examples=["dispatchz-seed-v1"]),
     "sourceTimestamp": DT,
     "retrievedAt": DT,
     "verificationStatus": enum("verified", "unverified", "unknown"),
@@ -375,6 +375,7 @@ responses = {
     "Forbidden": err("FORBIDDEN"), "NotFound": err("NOT_FOUND"),
     "Conflict": err("CONFLICT, UNIT_UNAVAILABLE, INVALID_STATE_TRANSITION, RECOMMENDATION_OUTDATED, IDEMPOTENCY_KEY_REUSED or STALE_DATA"),
     "Unavailable": err("INFERENCE_UNAVAILABLE or service degraded"),
+    "InternalError": err("INTERNAL_ERROR"),
 }
 
 def jc(name, **kw): return {"required": True, "content": {"application/json": {"schema": R(name), **kw}}}
@@ -404,6 +405,11 @@ op(f"{A}/auth/me", "get", "getCurrentUser", "Current user", "Auth", ok(200, "Pri
 op(f"{A}/health", "get", "getHealth", "Service health", "Auth", ok(200, "Healthy or degraded", "Health"),
    desc="Unauthenticated liveness/readiness for deployment health checks.", errs=("503",))
 paths[f"{A}/health"]["get"]["security"] = []
+# A failing readiness probe returns the Health body so the failing component is visible to the caller.
+paths[f"{A}/health"]["get"]["responses"]["503"] = {
+    "description": "Not ready; `components` reports which dependency is down.",
+    "content": {"application/json": {"schema": R("Health")}},
+}
 
 # incidents
 op(f"{A}/incidents", "get", "listIncidents", "List incidents", "Incidents", ok(200, "Page of incidents", "IncidentList"),
@@ -537,7 +543,7 @@ op(f"{A}/events/stream", "get", "streamEvents", "Server-Sent Events stream", "Ev
 
 # ---------- examples ----------
 U1, U2, I1 = "9b1d6a30-5c7e-4a8a-b0f1-2a3c4d5e6f70", "c2e8f4a1-7b3d-4c59-8e12-6f7a8b9c0d11", "3f0c1a52-8d4e-4e0b-9a55-1d2f3c4b5a60"
-PROV = {"dataOrigin": "synthetic", "sourceSystem": "responsematch-seed-v1", "sourceTimestamp": "2026-03-01T14:00:00Z", "verificationStatus": "verified", "stale": False}
+PROV = {"dataOrigin": "synthetic", "sourceSystem": "dispatchz-seed-v1", "sourceTimestamp": "2026-03-01T14:00:00Z", "verificationStatus": "verified", "stale": False}
 schemas["Incident"]["examples"] = [{
     "incidentId": I1, "number": "INC-2026-000142", "status": "pending_dispatch", "priority": "P1", "priorityConfirmed": True,
     "confirmedCategory": "structure_fire", "narrative": "Synthetic: smoke visible from second-floor window, caller reports a person trapped.",
@@ -586,13 +592,18 @@ t_of = {o: t for t, l in TIERS.items() for o in l}
 for pth in paths.values():
     for o in pth.values():
         o["x-mvp-tier"] = t_of.get(o["operationId"], "future")
+        # A malformed path parameter (e.g. a non-UUID id) is a client validation error.
+        if any(P[p["$ref"].rsplit("/", 1)[-1]]["in"] == "path" for p in o.get("parameters", []) if "$ref" in p):
+            o["responses"].setdefault("400", {"$ref": "#/components/responses/BadRequest"})
+        # Unexpected server failure uses the same Error envelope on every operation.
+        o["responses"].setdefault("500", {"$ref": "#/components/responses/InternalError"})
 
 spec = {
     "openapi": "3.1.0",
     "info": {
-        "title": "ResponseMatch API", "version": "0.1.1",
+        "title": "DispatchZ API", "version": "0.1.2",
         "summary": "Human-in-the-loop emergency dispatch decision support (IBM Z Datathon 2026).",
-        "description": "Authoritative contract for ResponseMatch Live, Planning and Insights.\n\n"
+        "description": "Authoritative contract for DispatchZ Live, Planning and Insights.\n\n"
         "**Decision support only.** The API never issues real dispatch orders; any resulting unit assignment is a simulated action. "
         "All operational data is synthetic or simulated. Not CJIS-certified, HIPAA-compliant, or production-ready.\n\n"
         "Conventions: timestamps are ISO 8601 UTC; list endpoints use cursor pagination (`limit`, `cursor`) and `sort`; "
@@ -601,7 +612,7 @@ spec = {
         "license": {"name": "Hackathon prototype", "identifier": "UNLICENSED"},
     },
     "servers": [{"url": "http://localhost:4010", "description": "Prism mock server"}, {"url": "http://localhost:8000", "description": "Local development"},
-                {"url": "https://responsematch.example.invalid", "description": "LinuxONE deployment (placeholder)"}],
+                {"url": "https://dispatchz.example.invalid", "description": "LinuxONE deployment (placeholder)"}],
     "security": [{"bearerAuth": []}],
     "tags": [{"name": t} for t in ["Auth", "Incidents", "Intelligence", "Recommendations", "Resources", "Personnel", "Planning", "Insights", "Admin", "Events"]],
     "paths": paths,

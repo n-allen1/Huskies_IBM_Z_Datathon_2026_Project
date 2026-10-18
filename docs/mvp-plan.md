@@ -1,6 +1,6 @@
-# ResponseMatch 24-Hour MVP Plan
+# DispatchZ 24-Hour MVP Plan
 
-Contract: `contracts/openapi.json` (v0.1.1). Every operation carries `x-mvp-tier`: `mvp` (20), `stretch` (8), `future` (13). Nothing was removed.
+Contract: `contracts/openapi.json` (v0.1.2). Every operation carries `x-mvp-tier`: `mvp` (20), `stretch` (8), `future` (13). Nothing was removed.
 
 ## MVP vertical slice
 create incident -> units + capabilities -> classify (PyTorch, human confirms) -> requirements (rules) -> hard eligibility -> ETA rank (XGBoost) -> dispatcher review (simulated) -> SSE updates to dashboard. Scenario B: mark unit out of service -> recommendation invalidated -> re-run.

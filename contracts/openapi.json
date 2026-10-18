@@ -1,10 +1,10 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "ResponseMatch API",
-    "version": "0.1.1",
+    "title": "DispatchZ API",
+    "version": "0.1.2",
     "summary": "Human-in-the-loop emergency dispatch decision support (IBM Z Datathon 2026).",
-    "description": "Authoritative contract for ResponseMatch Live, Planning and Insights.\n\n**Decision support only.** The API never issues real dispatch orders; any resulting unit assignment is a simulated action. All operational data is synthetic or simulated. Not CJIS-certified, HIPAA-compliant, or production-ready.\n\nConventions: timestamps are ISO 8601 UTC; list endpoints use cursor pagination (`limit`, `cursor`) and `sort`; mutating endpoints that would be harmful if repeated require `Idempotency-Key`; entities carry `version` for optimistic concurrency; ML predictions, deterministic rules, optimizer output and human decisions are kept in separate fields/records.",
+    "description": "Authoritative contract for DispatchZ Live, Planning and Insights.\n\n**Decision support only.** The API never issues real dispatch orders; any resulting unit assignment is a simulated action. All operational data is synthetic or simulated. Not CJIS-certified, HIPAA-compliant, or production-ready.\n\nConventions: timestamps are ISO 8601 UTC; list endpoints use cursor pagination (`limit`, `cursor`) and `sort`; mutating endpoints that would be harmful if repeated require `Idempotency-Key`; entities carry `version` for optimistic concurrency; ML predictions, deterministic rules, optimizer output and human decisions are kept in separate fields/records.",
     "license": {
       "name": "Hackathon prototype",
       "identifier": "UNLICENSED"
@@ -20,7 +20,7 @@
       "description": "Local development"
     },
     {
-      "url": "https://responsematch.example.invalid",
+      "url": "https://dispatchz.example.invalid",
       "description": "LinuxONE deployment (placeholder)"
     }
   ],
@@ -86,6 +86,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -120,7 +123,17 @@
             }
           },
           "503": {
-            "$ref": "#/components/responses/Unavailable"
+            "description": "Not ready; `components` reports which dependency is down.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "security": [],
@@ -238,6 +251,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -292,6 +308,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -334,6 +353,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -391,6 +416,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -443,6 +471,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -505,6 +539,9 @@
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -547,6 +584,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -599,6 +642,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -662,6 +711,9 @@
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -703,6 +755,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -765,6 +823,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -871,6 +932,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -916,6 +980,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -982,6 +1052,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1048,6 +1121,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1096,6 +1172,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1142,6 +1221,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1206,6 +1291,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1281,6 +1369,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1324,6 +1415,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1376,6 +1473,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1436,6 +1539,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1496,6 +1602,9 @@
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1588,6 +1697,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1671,6 +1783,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1737,6 +1852,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1816,6 +1934,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1870,6 +1991,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1912,6 +2036,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -1965,6 +2095,12 @@
           },
           "503": {
             "$ref": "#/components/responses/Unavailable"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2010,6 +2146,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2055,6 +2194,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2101,6 +2243,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2147,6 +2292,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2248,6 +2396,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2313,6 +2464,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2354,6 +2508,12 @@
           },
           "404": {
             "$ref": "#/components/responses/NotFound"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2436,6 +2596,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2474,6 +2637,9 @@
           },
           "403": {
             "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
           }
         },
         "x-allowed-roles": [
@@ -2509,7 +2675,7 @@
           "sourceSystem": {
             "type": "string",
             "examples": [
-              "responsematch-seed-v1"
+              "dispatchz-seed-v1"
             ]
           },
           "sourceTimestamp": {
@@ -2930,7 +3096,7 @@
             "updatedAt": "2026-03-01T14:03:40Z",
             "provenance": {
               "dataOrigin": "synthetic",
-              "sourceSystem": "responsematch-seed-v1",
+              "sourceSystem": "dispatchz-seed-v1",
               "sourceTimestamp": "2026-03-01T14:00:00Z",
               "verificationStatus": "verified",
               "stale": false
@@ -3929,7 +4095,7 @@
             "version": 7,
             "provenance": {
               "dataOrigin": "simulated",
-              "sourceSystem": "responsematch-seed-v1",
+              "sourceSystem": "dispatchz-seed-v1",
               "sourceTimestamp": "2026-03-01T14:00:00Z",
               "verificationStatus": "verified",
               "stale": false
@@ -5833,6 +5999,16 @@
       },
       "Unavailable": {
         "description": "INFERENCE_UNAVAILABLE or service degraded",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "INTERNAL_ERROR",
         "content": {
           "application/json": {
             "schema": {

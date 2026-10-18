@@ -2,7 +2,60 @@
 __pycache__/
 *.py[cod]
 .venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Local secrets
+# Node / frontend
+node_modules/
+dist/
+build/
+.next/
+.vite/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local config and secrets (never commit)
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local databases and model/data artifacts produced at runtime
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Claude Code local-only settings (shared .claude/settings.json stays tracked)
+.claude/settings.local.json
+
+# Third-party documents (e.g. the datathon guidebook) are not ours to redistribute
+*.pdf
+
+# VM diagnostics captured while setting up LinuxONE (local evidence only)
+docs/platform-check*.txt
+docs/image-inspect.txt
+docs/nnpa-inspect.txt
+docs/nnpa-check.txt
+docs/classifier-eval.txt
+docs/eta-eval.txt
+docs/nnpa-sweep.txt
+docs/classifier-eval*.txt
+docs/eta-eval.txt
 **/.env
